@@ -247,6 +247,8 @@ A label line that is simply absent from otherwise readable text is **NOT DETECTE
 
 **REVIEW** is everything else: insufficient readable frames, partial coverage, low OCR confidence, a single near reading, label text only partially found, or all expected label lines undetected.
 
+**Duplicated lettering fails.** Every unmatched word is compared with the required tokens. A word that is at least 80% similar to a required word, is not a fragment or contraction of it, and appears in the same frame as the correct word, counts as a near-copy — for example `BOTANKA` printed above a correct `BOTANIKA`. Two or more readable frames with such a near-copy fail the critical **No duplicated lettering** check, because the render invented a second, garbled copy of text that should appear once. A single frame produces REVIEW, never FAIL. The offending reading, its similarity, confidence and box are recorded on that frame and in the JSON report.
+
 Palette overlap is **advisory**: it can turn a PASS into REVIEW evidence but never forces FAIL, because a new scene legitimately changes the colour distribution.
 
 ### 5. Manual label region
