@@ -20,6 +20,7 @@ import {
   buildCandidates,
   buildExpectedTokens,
   classifyMatch,
+  findExtraneousReadings,
   formatPercent,
   matchTokens,
   minConfidenceFor,
@@ -88,6 +89,19 @@ export function evaluateFrame(input: FrameInput): FrameSample {
     status: classifyMatch(match, input.threshold, legibility.legible),
   }));
 
+  // Words that are a close misspelling of required text. A render that prints the
+  // correct and a garbled copy of the same word is not a match, even though every
+  // required token was found. A token that was only read as a near-miss is left to
+  // the distortion rule below, so it is never counted twice.
+  const matchedTokens = new Set(
+    [...brand, ...label].filter((token) => token.status === 'match').map((token) => token.expected),
+  );
+  const extraText = findExtraneousReadings(
+    input.rawWords,
+    [...input.brandTokens, ...input.labelTokens],
+    input.minWordConfidence,
+  ).filter((reading) => matchedTokens.has(reading.expected));
+
   const allBrandMatched = brand.length > 0 && brand.every((token) => token.status === 'match');
   const allLabelMatched = label.every((token) => token.status === 'match');
   const brandNear = brand.some((token) => token.status === 'near');
@@ -129,6 +143,11 @@ export function evaluateFrame(input: FrameInput): FrameSample {
       notes.push(`Label token "${token.expected}" was not detected in this frame's readable text.`);
     }
   }
+  for (const extra of extraText) {
+    notes.push(
+      `Extra lettering read as "${extra.text}" (${formatPercent(extra.similarity)} similar to the required "${extra.expected}") — a second, altered copy of expected text.`,
+    );
+  }
 
   return {
     index: input.index,
@@ -143,6 +162,7 @@ export function evaluateFrame(input: FrameInput): FrameSample {
     legible: legibility.legible,
     brand,
     label,
+    extraText,
     status,
     notes,
     ocrPasses: input.ocrPasses,
@@ -395,6 +415,60 @@ export function buildReport(input: BuildReportInput): VerificationReport {
   }
   checks.push(labelCheck);
 
+  const extraFrames = readable.filter((frame) => frame.extraText.length > 0);
+  const extraReadings = Array.from(
+    new Map(
+      extraFrames.flatMap((frame) =>
+        frame.extraText.map((extra) => [`${extra.text}→${extra.expected}`, extra] as const),
+      ),
+    ).values(),
+  );
+  const extraList = extraReadings
+    .slice(0, 3)
+    .map((extra) => `“${extra.text}” (≈ “${extra.expected}”)`)
+    .join(', ');
+
+  let extraCheck: CheckResult;
+  if (readableCount === 0) {
+    extraCheck = {
+      id: 'extra-text',
+      title: 'No duplicated lettering',
+      status: 'review',
+      critical: true,
+      detail:
+        'No readable frames were available, so duplicated or altered lettering artefact could not be ruled out.',
+      metric: 'no readable frames',
+    };
+  } else if (extraFrames.length >= 2) {
+    extraCheck = {
+      id: 'extra-text',
+      title: 'No duplicated lettering',
+      status: 'fail',
+      critical: true,
+      detail: `Besides the required text, ${extraList} was also read in ${extraFrames.length} of ${readableCount} readable frames. The correct word and an altered near-copy appear in the same frames, which is evidence of duplicated or re-lettered text in the render rather than an OCR miss.`,
+      metric: `${extraFrames.length} / ${readableCount} readable frames`,
+    };
+  } else if (extraFrames.length === 1) {
+    extraCheck = {
+      id: 'extra-text',
+      title: 'No duplicated lettering',
+      status: 'review',
+      critical: true,
+      detail: `${extraList} was read once alongside the required text. A single frame is not enough to call a change, so this needs a human look.`,
+      metric: `1 / ${readableCount} readable frames`,
+    };
+  } else {
+    extraCheck = {
+      id: 'extra-text',
+      title: 'No duplicated lettering',
+      status: 'pass',
+      critical: true,
+      detail: 'No altered near-copy of the required words was read in any readable frame.',
+      metric: `0 / ${readableCount} readable frames`,
+    };
+  }
+  checks.push(extraCheck);
+
   let legibilityStatus: CheckStatus = 'review';
   if (readableFraction >= 0.7 && meanConfidence >= 55) legibilityStatus = 'pass';
   else if (readableFraction < 0.35) legibilityStatus = 'fail';
@@ -458,6 +532,7 @@ export function buildReport(input: BuildReportInput): VerificationReport {
     if (readableCount < required) reasons.push(`only ${readableCount} of ${frames.length} frames were readable (${required} needed)`);
     if (!brandCheck.status.match(/pass/)) reasons.push('brand coverage is incomplete');
     if (labelCheck.status === 'review') reasons.push('label text was only partially matched');
+    if (extraCheck.status === 'review') reasons.push('an altered copy of required lettering appeared in one frame');
     if (legibilityStatus !== 'pass') reasons.push('OCR confidence is limited');
     if (reasons.length === 0) reasons.push('the sampled evidence is not conclusive');
     summary = `Verification is inconclusive because ${reasons.join('; ')}. No critical check demonstrably failed, so this is not a FAIL. Inspect the frames or mark the label region and run again.`;

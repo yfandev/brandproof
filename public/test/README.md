@@ -9,7 +9,7 @@ reachable at `/test/<filename>` on any deployment.
 
 | | |
 | --- | --- |
-| Filename | `botanika-packshot.png` |
+| Filename | `brown_moisturizer_bottle.jpg` |
 | Subject | Portrait pack shot: brown pump bottle on a white background |
 | Printed text | `HYDRATING` / `MOISTURIZER` (upper label), `BOTANIKA` (lower label), `NATURAL INGREDIENTS · PLANT POWERED` (bottom line) |
 
