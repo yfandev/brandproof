@@ -198,7 +198,7 @@ If the browser cannot decode or seek the clip, verification stops with a concret
 Tesseract.js 7 runs in a web worker with English (`eng`) model data. Every frame is read in several passes, then the words are merged:
 
 1. **Full frame** — upscaled to a 2200 px long edge, sparse-text page segmentation (PSM 11).
-2. **Label crop** — either the manually marked rectangle or an automatic crop derived from the best brand-word box, falling back to the densest text cluster. The crop is upscaled to an 1800 px long edge (up to 6×) before OCR.
+2. **Label crop** — either the manually marked rectangle or an automatic crop derived from the best brand-word box, grown to the whole label block by including the same-column lines printed above and below it, then falling back to the densest text cluster. The crop is upscaled to an 1800 px long edge (up to 6×) before OCR. A brand-only crop used to cut off the small lines above the brand, so they were never read at crop resolution.
 3. **Crop variants** — original, grayscale, contrast-enhanced and adaptive-threshold images, using both **single-block** (PSM 6) and **sparse-text** (PSM 11) segmentation. If the normal threshold finds fewer than two words, an inverted threshold pass is added for light-on-dark labels.
 
 That is typically 5–6 real Tesseract passes per sampled frame. Each pass returns its own word boxes and confidence values. Words with the same normalized text in the same place are merged (highest confidence wins); distinct instances stay separate. The merged text is grouped back into visual lines, and every box is mapped through the actual crop offset and scale into normalized 0–1 coordinates of the **full frame**.
@@ -521,7 +521,7 @@ Without the secret the UI still loads and the ledger still works, but **Start ca
 ## Limitations
 
 - **OCR is not a forensic check.** Tiny, curved, embossed, engraved, reflective or motion-blurred text can stay unreadable even for a human; BrandProof reports that as low legibility.
-- **Small text can be missed even with the new passes.** The automatic label crop is a heuristic based on the brand box or densest text cluster; it can clip surrounding lines. If a line is undetected, mark the label area manually and re-run before treating it as a label change.
+- **Small text can be missed even with the new passes.** The automatic label crop grows the brand box to same-column lines, but a label whose lines sit far apart, in another column, or on a curved surface can still be clipped. If a line is undetected, mark the label area manually and re-run before treating it as a label change.
 - **NOT DETECTED is not a mismatch.** An OCR miss produces REVIEW (or `insufficient-evidence`), not FAIL. FAIL for label text requires repeated near-readings that look like visible distortion, not silence.
 - **Sampling is discrete.** Incorrect text that appears only between sampled frames can be missed. Raise sample count for fast cuts.
 - **Text only, plus a colour heuristic.** There is no logo-shape matching, structural comparison or audio analysis. Palette overlap is a coarse 4×4×4 RGB histogram intersection, not identity.

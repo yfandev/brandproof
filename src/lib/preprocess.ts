@@ -268,6 +268,44 @@ export function mergeOcrWords(words: OcrWord[]): OcrWord[] {
  * Expands the brand word into a generous label neighborhood. If the brand fills
  * most of the frame the region is rejected, because a crop would add no detail.
  */
+/**
+ * A printed label is a stack of lines centred on the same axis. A crop anchored
+ * on the brand word alone cuts off the smaller lines above and below it, so they
+ * were never read at crop resolution. Union the anchor with the same-column
+ * words within a few line-heights so one crop covers the whole label block.
+ */
+export function labelBlockBbox(anchor: Bbox, blocks: Bbox[], maxGapRatio = 6): Bbox {
+  const width = anchor.x1 - anchor.x0;
+  const height = Math.max(1e-6, anchor.y1 - anchor.y0);
+  if (width <= 0) return { ...anchor };
+
+  const centerX = (anchor.x0 + anchor.x1) / 2;
+  const tolerance = Math.max(0.05, width) / 2 + Math.max(0.02, width * 0.35);
+  let box: Bbox = { ...anchor };
+
+  for (const block of blocks) {
+    const blockWidth = block.x1 - block.x0;
+    const blockHeight = block.y1 - block.y0;
+    if (blockWidth <= 0 || blockHeight <= 0 || blockHeight > height * 1.8) continue;
+    const blockCenter = (block.x0 + block.x1) / 2;
+    const gap =
+      block.y1 < anchor.y0
+        ? anchor.y0 - block.y1
+        : block.y0 > anchor.y1
+          ? block.y0 - anchor.y1
+          : 0;
+    if (Math.abs(blockCenter - centerX) > tolerance || gap > height * maxGapRatio) continue;
+    box = {
+      x0: Math.min(box.x0, block.x0),
+      y0: Math.min(box.y0, block.y0),
+      x1: Math.max(box.x1, block.x1),
+      y1: Math.max(box.y1, block.y1),
+    };
+  }
+
+  return box;
+}
+
 export function deriveLabelRegion(anchor: Bbox): Rect | null {
   const width = anchor.x1 - anchor.x0;
   const height = anchor.y1 - anchor.y0;
