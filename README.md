@@ -8,6 +8,10 @@ Built for the **Comfy Open Source × Higgsfield** hackathon. BrandProof runs a s
 
 ![status](https://img.shields.io/badge/status-MVP-d7ff5f) ![license](https://img.shields.io/badge/license-MIT-white) ![stack](https://img.shields.io/badge/stack-React%20%2B%20Vite%20%2B%20Tesseract.js-white)
 
+> ### 🏆 Top 3 — Comfy Open Source × Higgsfield hackathon (October 2026)
+>
+> BrandProof placed in the **top three** of the hackathon. The award list is unranked among the top three, so no further placement is claimed here.
+
 ---
 
 ## ▶ Live demo
@@ -488,7 +492,7 @@ Never paste an API key or a private `COMFY_API_KEY` value into an issue. Revoke 
 
 Released under the [MIT License](LICENSE) — Copyright (c) 2026 yfandev. Tesseract.js is Apache-2.0; ComfyUI, the LTX-2.3 model and the optional Wan 2.2 models carry their own licenses and are not redistributed here.
 
-This repository is a hackathon submission prepared for public release. Submission eligibility and judging are decided by the hackathon organisers; nothing in this repository claims that review has already happened.
+This repository is a hackathon submission prepared for public release. The project was awarded a **top-three placement** in the Comfy Open Source × Higgsfield hackathon (October 2026); the organisers' award list is unranked among the top three. Eligibility, judging and any further ranking are decided by the hackathon organisers.
 
 ---
 
