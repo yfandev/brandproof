@@ -5,11 +5,13 @@ import {
   COMFY_API_KEYS_URL,
   CloudApiError,
   downloadCloudVideo,
+  fetchComfyAccount,
   fetchComfyStatus,
   generateCloudVideo,
   parseWorkflowJson,
   waitForCloudVideo,
   type CloudJob,
+  type ComfyAccount,
   type ComfyStatus,
 } from '../lib/cloud';
 import { DEFAULT_WORKFLOW_NAME, DEFAULT_WORKFLOW_TEXT } from '../lib/defaultWorkflow';
@@ -56,6 +58,15 @@ async function copyText(text: string): Promise<boolean> {
   return legacyCopy(text);
 }
 
+function money(amount: number, currency: string | null): string {
+  const code = (currency || 'USD').toUpperCase();
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: code }).format(amount);
+  } catch {
+    return `${amount.toFixed(2)} ${code}`;
+  }
+}
+
 function elapsedLabel(ms: number): string {
   const seconds = Math.floor(ms / 1000);
   if (seconds < 60) return `${seconds}s`;
@@ -92,6 +103,8 @@ export function ComfyCloudPanel({
   const [copied, setCopied] = useState(false);
   const [status, setStatus] = useState<ComfyStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [account, setAccount] = useState<ComfyAccount | null>(null);
+  const [accountError, setAccountError] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
   const [job, setJob] = useState<CloudJob | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -125,6 +138,28 @@ export function ComfyCloudPanel({
   useEffect(() => {
     return () => abortRef.current?.abort();
   }, []);
+
+  // The key belongs to one Comfy workspace, so read that workspace's billing
+  // rather than guessing whose credits a run spends.
+  useEffect(() => {
+    if (!configured) {
+      setAccount(null);
+      return;
+    }
+    const controller = new AbortController();
+    void fetchComfyAccount(controller.signal)
+      .then((next) => {
+        setAccount(next);
+        setAccountError(null);
+      })
+      .catch((next: unknown) => {
+        if (controller.signal.aborted) return;
+        setAccountError(
+          next instanceof Error ? next.message : 'Could not read the Comfy Cloud billing workspace.',
+        );
+      });
+    return () => controller.abort();
+  }, [configured]);
 
   const handleCopyPrompt = async () => {
     if (!prompt.trim()) {
@@ -261,6 +296,10 @@ export function ComfyCloudPanel({
             </a>{' '}
             and the LTX-2.3 workflow bundled with the app. Runs use the credits in your Comfy workspace.
           </p>
+          <p className="micro">
+            The photo is fitted into the workflow&apos;s 16:9 frame before upload, so Comfy&apos;s resize cannot crop
+            the pack shot in half.
+          </p>
         </div>
       </div>
 
@@ -268,6 +307,37 @@ export function ComfyCloudPanel({
         <Alert tone="warn" title="Could not read Comfy Cloud configuration">
           {statusError}
         </Alert>
+      )}
+
+      {configured && (
+        <div className="cloud-account">
+          <div className="cloud-account__head">
+            <p className="field__label">Billing workspace</p>
+            <Pill tone="neutral">{account?.workspaceName ?? 'workspace-scoped key'}</Pill>
+          </div>
+          <p className="micro">
+            A Comfy API key always bills the workspace that created it, so this Worker cannot choose between your
+            personal workspace and a team workspace at runtime.{' '}
+            {account?.email ? `The key authenticates as ${account.email}.` : ''}
+          </p>
+          <div className="cloud-bindings">
+            <span>workspace: {account?.workspaceName ?? 'not named by the API'}</span>
+            {account?.balanceUsd != null && (
+              <span>credit balance: {money(account.balanceUsd, account.currency)}</span>
+            )}
+            {account?.prepaidUsd != null && <span>prepaid: {money(account.prepaidUsd, account.currency)}</span>}
+            {account?.cloudCreditUsd != null && (
+              <span>cloud credit: {money(account.cloudCreditUsd, account.currency)}</span>
+            )}
+            {account?.spendUsd != null && <span>spent this month: {money(account.spendUsd, 'USD')}</span>}
+          </div>
+          {accountError && <p className="micro micro--warn">{accountError}</p>}
+          {account?.warnings.map((warning) => (
+            <p className="micro micro--warn" key={warning}>
+              {warning}
+            </p>
+          ))}
+        </div>
       )}
 
       {status && !configured && (
