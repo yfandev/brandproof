@@ -94,10 +94,13 @@ describe('UI workflow conversion', () => {
     expect(converted.workflow['2'].inputs.video).toEqual(['sg3_13', 0]);
     expect(converted.workflow['sg3_12'].inputs.image).toEqual(['1', 0]);
     expect(converted.workflow['sg3_12'].inputs).toMatchObject({
-      width: 768,
-      height: 1152,
-      crop: 'center',
+      resize_type: 'scale dimensions',
+      'resize_type.width': 768,
+      'resize_type.height': 1152,
+      'resize_type.crop': 'center',
     });
+    expect(converted.workflow['sg3_12'].inputs).not.toHaveProperty('width');
+    expect(converted.workflow['sg3_12'].inputs).not.toHaveProperty('crop');
     expect(converted.workflow['sg3_13'].inputs.images).toEqual(['sg3_12', 0]);
     expect(converted.workflow['sg3_10'].inputs.text).toBe('A tube of cream');
     expect(converted.workflow['sg3_11']._meta?.title).toBe('Negative prompt');
@@ -113,6 +116,30 @@ describe('UI workflow conversion', () => {
     expect(result.parsed.report.negativeNodes).toEqual(['sg3_11']);
     const api = JSON.parse(result.parsed.apiWorkflowText) as Record<string, unknown>;
     expect(api['sg3_13']).toMatchObject({ class_type: 'VHS_VideoCombine' });
+  });
+
+  it('preserves group-qualified names for linked dynamic inputs', () => {
+    const workflow = uiWorkflow() as any;
+    workflow.definitions.subgraphs[0].nodes.push({
+      id: 14,
+      type: 'ComfyMathExpression',
+      inputs: [
+        { label: 'a', name: 'values.a', link: 205 },
+        { name: 'values.b', link: null },
+      ],
+      widgets_values_named: { expression: 'a/2' },
+    });
+    workflow.definitions.subgraphs[0].links.push({
+      id: 205,
+      origin_id: 12,
+      origin_slot: 0,
+      target_id: 14,
+      target_slot: 0,
+    });
+
+    const converted = convertUiWorkflow(workflow);
+    expect(converted.workflow['sg3_14'].inputs['values.a']).toEqual(['sg3_12', 0]);
+    expect(converted.workflow['sg3_14'].inputs).not.toHaveProperty('a');
   });
 
   it('refuses a muted or bypassed UI node rather than producing a wrong graph', () => {

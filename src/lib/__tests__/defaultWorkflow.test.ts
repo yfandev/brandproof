@@ -37,7 +37,7 @@ describe('bundled LTX-2.3 workflow', () => {
     expect(api[(saveInput as [string, number])[0]]).toBeDefined();
   });
 
-  it('flattens conditional widget groups into the API input names', () => {
+  it('preserves group-qualified dynamic combo input names', () => {
     const result = parseWorkflowJson(DEFAULT_WORKFLOW_TEXT);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -46,12 +46,6 @@ describe('bundled LTX-2.3 workflow', () => {
       string,
       { class_type: string; inputs: Record<string, unknown> }
     >;
-    for (const [id, node] of Object.entries(api)) {
-      expect({ id, dotted: Object.keys(node.inputs).filter((key) => key.includes('.')) }).toEqual({
-        id,
-        dotted: [],
-      });
-    }
 
     const resizers = Object.values(api).filter(
       (node) => node.class_type === 'ResizeImageMaskNode',
@@ -59,13 +53,26 @@ describe('bundled LTX-2.3 workflow', () => {
     expect(resizers.length).toBeGreaterThan(0);
     for (const node of resizers) {
       if (node.inputs.resize_type === 'scale dimensions') {
-        expect(node.inputs).toHaveProperty('crop');
-        expect(node.inputs).toHaveProperty('width');
-        expect(node.inputs).toHaveProperty('height');
+        expect(node.inputs).toHaveProperty('resize_type.crop');
+        expect(node.inputs).toHaveProperty('resize_type.width');
+        expect(node.inputs).toHaveProperty('resize_type.height');
+        expect(node.inputs).not.toHaveProperty('crop');
+        expect(node.inputs).not.toHaveProperty('width');
+        expect(node.inputs).not.toHaveProperty('height');
       }
       if (node.inputs.resize_type === 'scale longer dimension') {
-        expect(node.inputs).toHaveProperty('longer_size');
+        expect(node.inputs).toHaveProperty('resize_type.longer_size');
+        expect(node.inputs).not.toHaveProperty('longer_size');
       }
+    }
+
+    const mathNodes = Object.values(api).filter(
+      (node) => node.class_type === 'ComfyMathExpression',
+    );
+    expect(mathNodes.length).toBeGreaterThan(0);
+    for (const node of mathNodes) {
+      expect(node.inputs).toHaveProperty('values.a');
+      expect(node.inputs).not.toHaveProperty('a');
     }
 
     const enhancer = Object.values(api).find(
@@ -73,14 +80,16 @@ describe('bundled LTX-2.3 workflow', () => {
     );
     expect(enhancer?.inputs).toMatchObject({
       sampling_mode: 'on',
-      temperature: 0.7,
-      top_k: 64,
-      top_p: 0.95,
-      min_p: 0.05,
-      repetition_penalty: 1.05,
-      seed: 0,
-      presence_penalty: 0,
+      'sampling_mode.temperature': 0.7,
+      'sampling_mode.top_k': 64,
+      'sampling_mode.top_p': 0.95,
+      'sampling_mode.min_p': 0.05,
+      'sampling_mode.repetition_penalty': 1.05,
+      'sampling_mode.seed': 0,
+      'sampling_mode.presence_penalty': 0,
     });
+    expect(enhancer?.inputs).not.toHaveProperty('temperature');
+    expect(enhancer?.inputs).not.toHaveProperty('seed');
   });
 
   it('binds the product photo, prompt and negative prompt on the server', () => {

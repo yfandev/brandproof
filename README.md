@@ -192,7 +192,7 @@ The key must belong to the workspace/account holding the credits. Comfy's Cloud 
 
 BrandProof ships the LTX-2.3 image-to-video graph in [`src/workflows/ltx23_i2v.json`](src/workflows/ltx23_i2v.json). It is the ordinary Comfy UI workflow (with one `Image to Video (LTX-2.3)` subgraph), so the browser flattens the subgraph, maps linked inputs and constants, resolves reroutes/primitive nodes, and sends an API graph to the Worker. The Worker validates the API graph again; it never accepts a UI graph as if it were executable.
 
-No workflow upload, API-format export or paste step is exposed in the normal UI. The app has a fixed workflow for this hackathon build. Conditional UI widget groups are flattened into the API input names the server expects: for example `resize_type.crop` becomes `crop`, and `sampling_mode.min_p` becomes `min_p`. If a bundled node is muted/bypassed or uses `GetNode`/`SetNode`, conversion stops with a specific error instead of guessing.
+No workflow upload, API-format export or paste step is exposed in the normal UI. The app has a fixed workflow for this hackathon build. Comfy V3 dynamic-combo inputs keep their group prefix in the API graph, so the converter preserves names such as `resize_type.crop`, `resize_type.longer_size`, `sampling_mode.min_p` and `values.a`; flattening them to `crop`, `longer_size`, `min_p` or `a` makes Comfy reject the prompt with `required_input_missing`. If a bundled node is muted/bypassed or uses `GetNode`/`SetNode`, conversion stops with a specific error instead of guessing.
 
 The bundled workflow must contain:
 
