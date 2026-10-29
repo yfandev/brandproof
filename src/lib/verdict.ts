@@ -78,6 +78,22 @@ function overlapRatio(a: Bbox, b: Bbox): number {
   return smaller > 0 ? intersection / smaller : 0;
 }
 
+/**
+ * Two readings of the same printed word share a box of roughly the same size.
+ * A short look-alike sitting inside the area of a much larger word is extra
+ * lettering printed on the label, not a second OCR pass over that word — a
+ * real clip printed a small "BOTANIKA" above a large "BOTANKA", and both boxes
+ * overlapped, which hid the altered copy.
+ */
+function samePhysicalWord(a: Bbox, b: Bbox): boolean {
+  if (overlapRatio(a, b) < 0.5) return false;
+  const heightA = a.y1 - a.y0;
+  const heightB = b.y1 - b.y0;
+  const tallest = Math.max(heightA, heightB);
+  const shortest = Math.min(heightA, heightB);
+  return tallest > 0 && shortest / tallest >= 0.6;
+}
+
 export function evaluateFrame(input: FrameInput): FrameSample {
   const legibility = assessLegibility(input.rawWords, input.minWordConfidence);
   const candidates = buildCandidates(input.rawWords);
@@ -110,15 +126,19 @@ export function evaluateFrame(input: FrameInput): FrameSample {
   const extraText = findExtraneousReadings(
     input.rawWords,
     [...input.brandTokens, ...input.labelTokens],
-    input.minWordConfidence,
+    // A smaller second label line often scores lower than the main word, so the
+    // altered copy is looked for below the word-confidence floor used to accept
+    // the required text itself. Its confidence is still reported.
+    Math.min(input.minWordConfidence, 30),
   ).filter((reading) =>
     // Two OCR passes reading the same physical word differently is one word, not a
-    // duplicate. Only a look-alike in a different place counts as a second copy.
+    // duplicate. Only a look-alike in a different place or at a different size
+    // counts as a second, altered copy.
     matched.some(
       (token) =>
         token.expected === reading.expected &&
         token.bbox !== null &&
-        overlapRatio(token.bbox, reading.bbox) < 0.5,
+        !samePhysicalWord(token.bbox, reading.bbox),
     ),
   );
 
@@ -292,6 +312,14 @@ export function buildReport(input: BuildReportInput): VerificationReport {
   const brandPartialFrames = readable.filter((frame) =>
     frame.brand.some((token) => token.status === 'unreadable'),
   ).length;
+  // Frames where the brand word was at least partly read: a clipped leading edge
+  // still shows the printed word is present, even though it is not a clean read.
+  const brandObservedFrames = readable.filter(
+    (frame) =>
+      brandAllMatch(frame) ||
+      frame.brand.some((token) => token.status === 'unreadable' && Boolean(token.matched)),
+  ).length;
+  const brandObservedRecall = readableCount > 0 ? brandObservedFrames / readableCount : 0;
   const closestPartialReadings = Array.from(
     new Set(
       readable
@@ -343,6 +371,19 @@ export function buildReport(input: BuildReportInput): VerificationReport {
       critical: true,
       detail: `Recognised in ${brandHits} of ${readableCount} readable frames (${formatPercent(brandRecall)}), meeting the ${formatPercent(coverage)} coverage target.`,
       metric: `${brandHits} / ${readableCount} readable frames`,
+    };
+  } else if (brandNearFrames === 0 && brandHits >= 3 && brandObservedRecall >= coverage) {
+    brandCheck = {
+      id: 'brand',
+      title: `Brand name “${config.brand}”`,
+      status: 'pass',
+      critical: true,
+      detail: `Fully recognised in ${brandHits} of ${readableCount} readable frames (${formatPercent(brandRecall)}); with ${brandPartialFrames} further frame${
+        brandPartialFrames === 1 ? '' : 's'
+      } where only the leading edge was clipped${
+        closestPartialReadings.length > 0 ? ` (closest readings: ${closestPartialReadings.join(', ')})` : ''
+      }, the word was present in ${brandObservedFrames} of ${readableCount} (${formatPercent(brandObservedRecall)}). No altered spelling of the brand was read.`,
+      metric: `${brandHits} full + ${brandPartialFrames} partial / ${readableCount} readable frames`,
     };
   } else if (brandHits === 0 && brandPartialFrames >= Math.max(2, Math.ceil(readableCount * 0.5))) {
     brandCheck = {
