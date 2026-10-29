@@ -173,7 +173,13 @@ export function matchTokens(
       }
     }
     const status: TokenStatus =
-      bestScore >= threshold ? 'match' : bestScore >= nearRatio(threshold) ? 'near' : 'missing';
+      bestScore >= threshold
+        ? 'match'
+        : best && isLeadingEdgeRead(expected, best.normalized)
+          ? 'unreadable'
+          : bestScore >= nearRatio(threshold)
+            ? 'near'
+            : 'missing';
     return {
       expected,
       matched: best ? best.text : null,
@@ -189,9 +195,25 @@ export function nearRatio(threshold: number): number {
   return Math.max(0.5, threshold * 0.72);
 }
 
+/**
+ * True when the only difference sits at the start of the expected word — how a
+ * clipped crop or a low-contrast first glyph reads ("TANIKA", "UTANIKA" for
+ * "BOTANIKA"). That is a partially read word, not evidence that the printed
+ * lettering changed, so it must produce REVIEW rather than FAIL.
+ */
+export function isLeadingEdgeRead(expected: string, candidate: string): boolean {
+  if (!expected || !candidate || expected === candidate) return false;
+  if (expected.length < 6 || candidate.length < 4) return false;
+  const tail = expected.slice(2);
+  return candidate.endsWith(tail) && candidate.length - tail.length <= 3;
+}
+
 export function classifyMatch(match: TokenMatch, threshold: number, legible: boolean): TokenStatus {
   if (!legible) return 'unreadable';
   if (match.similarity >= threshold) return 'match';
+  if (match.matched && isLeadingEdgeRead(match.expected, normalizeText(match.matched))) {
+    return 'unreadable';
+  }
   if (match.similarity >= nearRatio(threshold)) return 'near';
   return 'missing';
 }
@@ -256,6 +278,8 @@ export function findExtraneousReadings(
     for (const token of tokens) {
       // A fragment or contraction of the same word is an OCR split, not new text.
       if (normalized.includes(token) || token.includes(normalized)) continue;
+      // A leading-edge read is the same word seen through a clipped crop.
+      if (isLeadingEdgeRead(token, normalized)) continue;
       const score = similarity(token, normalized);
       if (!best || score > best.score) best = { token, score };
     }

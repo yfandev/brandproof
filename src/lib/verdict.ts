@@ -1,4 +1,5 @@
 import type {
+  Bbox,
   CheckResult,
   CheckStatus,
   FrameSample,
@@ -65,6 +66,18 @@ export interface FrameInput {
   ocrRegionSource?: OcrRegionSource;
 }
 
+function overlapRatio(a: Bbox, b: Bbox): number {
+  const width = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+  const height = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+  if (width <= 0 || height <= 0) return 0;
+  const intersection = width * height;
+  const smaller = Math.min(
+    (a.x1 - a.x0) * (a.y1 - a.y0),
+    (b.x1 - b.x0) * (b.y1 - b.y0),
+  );
+  return smaller > 0 ? intersection / smaller : 0;
+}
+
 export function evaluateFrame(input: FrameInput): FrameSample {
   const legibility = assessLegibility(input.rawWords, input.minWordConfidence);
   const candidates = buildCandidates(input.rawWords);
@@ -93,14 +106,21 @@ export function evaluateFrame(input: FrameInput): FrameSample {
   // correct and a garbled copy of the same word is not a match, even though every
   // required token was found. A token that was only read as a near-miss is left to
   // the distortion rule below, so it is never counted twice.
-  const matchedTokens = new Set(
-    [...brand, ...label].filter((token) => token.status === 'match').map((token) => token.expected),
-  );
+  const matched = [...brand, ...label].filter((token) => token.status === 'match' && token.bbox);
   const extraText = findExtraneousReadings(
     input.rawWords,
     [...input.brandTokens, ...input.labelTokens],
     input.minWordConfidence,
-  ).filter((reading) => matchedTokens.has(reading.expected));
+  ).filter((reading) =>
+    // Two OCR passes reading the same physical word differently is one word, not a
+    // duplicate. Only a look-alike in a different place counts as a second copy.
+    matched.some(
+      (token) =>
+        token.expected === reading.expected &&
+        token.bbox !== null &&
+        overlapRatio(token.bbox, reading.bbox) < 0.5,
+    ),
+  );
 
   const allBrandMatched = brand.length > 0 && brand.every((token) => token.status === 'match');
   const allLabelMatched = label.every((token) => token.status === 'match');
@@ -269,6 +289,17 @@ export function buildReport(input: BuildReportInput): VerificationReport {
   const brandNearFrames = readable.filter(
     (frame) => !brandAllMatch(frame) && frame.brand.some((token) => token.status === 'near'),
   ).length;
+  const brandPartialFrames = readable.filter((frame) =>
+    frame.brand.some((token) => token.status === 'unreadable'),
+  ).length;
+  const closestPartialReadings = Array.from(
+    new Set(
+      readable
+        .flatMap((frame) => frame.brand)
+        .filter((token) => token.status === 'unreadable' && token.matched)
+        .map((token) => `"${token.matched}"`),
+    ),
+  ).slice(0, 3);
   const labelAllMatch = (frame: FrameSample) => frame.label.every((token) => token.status === 'match');
   const labelHits = labelTokens.length > 0 ? readable.filter(labelAllMatch).length : null;
 
@@ -312,6 +343,17 @@ export function buildReport(input: BuildReportInput): VerificationReport {
       critical: true,
       detail: `Recognised in ${brandHits} of ${readableCount} readable frames (${formatPercent(brandRecall)}), meeting the ${formatPercent(coverage)} coverage target.`,
       metric: `${brandHits} / ${readableCount} readable frames`,
+    };
+  } else if (brandHits === 0 && brandPartialFrames >= Math.max(2, Math.ceil(readableCount * 0.5))) {
+    brandCheck = {
+      id: 'brand',
+      title: `Brand name “${config.brand}”`,
+      status: 'review',
+      critical: true,
+      detail: `The brand was only partially read in ${brandPartialFrames} of ${readableCount} readable frames${
+        closestPartialReadings.length > 0 ? ` (closest readings: ${closestPartialReadings.join(', ')})` : ''
+      }. A clipped or leading-edge read is not evidence that the printed brand changed, so this needs a human look — mark the label area or use a sharper clip.`,
+      metric: `${brandPartialFrames} partial / ${readableCount} readable frames`,
     };
   } else if (brandHits === 0 && readableCount >= 2 && meanConfidence >= 50) {
     brandCheck = {
