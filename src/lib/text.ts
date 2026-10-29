@@ -172,8 +172,14 @@ export function matchTokens(
         best = candidate;
       }
     }
+    // A required token only counts as matched when every letter is read. Word
+    // similarity puts a one-letter deletion at 0.875, which clears the balanced
+    // 0.87 threshold, so a render that drops a letter ("BOTANKA" for
+    // "BOTANIKA") used to be reported as an exact match. Joined or split
+    // candidates still match because they contain the whole expected token.
+    const wholeWord = best ? isWholeWordRead(expected, best.normalized) : false;
     const status: TokenStatus =
-      bestScore >= threshold
+      bestScore >= threshold && wholeWord
         ? 'match'
         : best && isLeadingEdgeRead(expected, best.normalized)
           ? 'unreadable'
@@ -201,6 +207,17 @@ export function nearRatio(threshold: number): number {
  * "BOTANIKA"). That is a partially read word, not evidence that the printed
  * lettering changed, so it must produce REVIEW rather than FAIL.
  */
+/**
+ * True when the reading contains the complete expected word: either the same
+ * string, or a candidate built by joining/splitting neighbour words. A reading
+ * that differs inside the word is not the required lettering, however close the
+ * edit distance makes it look.
+ */
+export function isWholeWordRead(expected: string, candidate: string): boolean {
+  if (!expected || !candidate) return false;
+  return candidate === expected || candidate.includes(expected);
+}
+
 export function isLeadingEdgeRead(expected: string, candidate: string): boolean {
   if (!expected || !candidate || expected === candidate) return false;
   if (expected.length < 6 || candidate.length < 4) return false;
@@ -210,7 +227,9 @@ export function isLeadingEdgeRead(expected: string, candidate: string): boolean 
 
 export function classifyMatch(match: TokenMatch, threshold: number, legible: boolean): TokenStatus {
   if (!legible) return 'unreadable';
-  if (match.similarity >= threshold) return 'match';
+  if (match.similarity >= threshold && isWholeWordRead(match.expected, normalizeText(match.matched ?? ''))) {
+    return 'match';
+  }
   if (match.matched && isLeadingEdgeRead(match.expected, normalizeText(match.matched))) {
     return 'unreadable';
   }

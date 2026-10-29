@@ -12,3 +12,6 @@ coverage
 /freebuff-sites-build/
 
 .secrets/
+
+# Tesseract language models cached by local OCR scripts
+eng.traineddata
