@@ -1,10 +1,12 @@
 # BrandProof
 
-**Visual fidelity verification for AI-generated product ads.**
+**Label-fidelity verification for AI-generated product ads — and a loop that regenerates until the label is proven.**
 
 Upload a product pack shot, generate or import an AI advertising clip, then verify that the brand name and printed label survive the render. BrandProof samples frames in your browser, reads the label with Tesseract.js, overlays the actual OCR word boxes, compares the palette against the reference photo, and produces a PASS / REVIEW / FAIL report you can download as JSON.
 
-Built for the **Comfy Open Source × Higgsfield** hackathon. BrandProof runs a static React frontend plus a tiny same-origin Worker API proxy. The Comfy key stays in the Worker; the photo and the bundled API graph go to Comfy Cloud only when you press **Generate**, and the returned MP4 is verified locally.
+**v2 closes the loop.** The Catalog Pilot Run verifies up to 8 products in parallel and does not stop at the first verdict: when a clip comes back FAIL or REVIEW, BrandProof rewrites the prompt from that attempt's own evidence, generates a new clip and re-verifies — repeated until the label is genuinely proven, or until three attempts are spent. No product is approved without a real PASS.
+
+Built for the **Comfy Open Source × Higgsfield** hackathon. BrandProof is a static React frontend plus a small same-origin Worker API proxy; the Comfy key stays in the Worker. Comfy Cloud runs the actual LTX-2.3 image-to-video workflow, and the returned MP4 is verified locally in the browser.
 
 ![status](https://img.shields.io/badge/status-MVP-d7ff5f) ![license](https://img.shields.io/badge/license-MIT-white) ![stack](https://img.shields.io/badge/stack-React%20%2B%20Vite%20%2B%20Tesseract.js-white)
 
