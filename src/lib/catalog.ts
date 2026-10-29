@@ -151,6 +151,12 @@ export interface CatalogProductJob {
   attempts: CatalogAttempt[];
   evidence: CompactEvidence | null;
   approvedAttemptId: string | null;
+  /**
+   * Strongest attempt when nothing reached PASS. A run that ends without a
+   * proven PASS should surface its best real evidence, not whichever attempt
+   * happened to run last.
+   */
+  bestAttemptId: string | null;
   videoName: string | null;
   startedAt: string | null;
   finishedAt: string | null;
@@ -366,10 +372,50 @@ export function createProductJob(draft: CatalogProductDraft): CatalogProductJob 
     attempts: [],
     evidence: null,
     approvedAttemptId: null,
+    bestAttemptId: null,
     videoName: null,
     startedAt: null,
     finishedAt: null,
   };
+}
+
+const VERDICT_RANK: Record<Verdict, number> = { PASS: 3, REVIEW: 2, FAIL: 1 };
+
+/**
+ * Ranks attempts by the evidence they actually produced. A REVIEW that read the
+ * brand in most frames beats a later FAIL, so the board can show the strongest
+ * result of the run rather than the last one.
+ */
+export function attemptScore(attempt: Pick<CatalogAttempt, 'verdict' | 'evidence'>): number {
+  const { verdict, evidence } = attempt;
+  if (!verdict || !evidence) return 0;
+  // Count frames, not just ratios: "brand read in 9 of 11 frames" is stronger
+  // evidence than "read in all 5 frames that happened to be legible". Readable
+  // coverage then breaks ties between two attempts with the same hit count.
+  const brand = Math.min(1, evidence.metrics.brandHits / 8) * 25;
+  const label =
+    evidence.metrics.labelHits === null ? 0 : Math.min(1, evidence.metrics.labelHits / 6) * 20;
+  return (
+    VERDICT_RANK[verdict] * 100 +
+    brand +
+    label +
+    evidence.metrics.readableFraction * 15 +
+    Math.min(1, evidence.metrics.meanConfidence / 100) * 5
+  );
+}
+
+/** Best attempt of a product; ties go to the earliest attempt. */
+export function pickBestAttempt(attempts: CatalogAttempt[]): CatalogAttempt | null {
+  let best: CatalogAttempt | null = null;
+  let bestScore = -1;
+  for (const attempt of attempts) {
+    const score = attemptScore(attempt);
+    if (score > bestScore) {
+      best = attempt;
+      bestScore = score;
+    }
+  }
+  return best;
 }
 
 export interface CatalogMetrics {
