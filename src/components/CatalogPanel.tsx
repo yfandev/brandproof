@@ -451,9 +451,11 @@ export function CatalogPanel() {
             </ol>
           </details>
           <p className="micro">
-            BrandProof checks visible label text only. It does not verify product shape, ingredients, legal claims or
-            overall authenticity. Comfy Cloud does not report per-job credit usage, so every credit figure is a planning
-            estimate.
+            The brand name is a required check, not just an input: the clip must actually show it. PASS needs the brand
+            and every required label line read in most sampled frames; a clip whose text is clearly readable but never
+            shows the brand is a FAIL. BrandProof checks visible label text only. It does not verify product shape,
+            ingredients, legal claims or overall authenticity. Comfy Cloud does not report per-job credit usage, so every
+            credit figure is a planning estimate.
           </p>
         </div>
       </div>
@@ -561,7 +563,11 @@ export function CatalogPanel() {
                       placeholder="Botanika Hydrating Moisturizer"
                     />
                   </Field>
-                  <Field label="Brand" htmlFor={`${row.id}-brand`}>
+                  <Field
+                    label="Brand"
+                    hint="Required, and must be visible in the clip: PASS needs this name read in most sampled frames."
+                    htmlFor={`${row.id}-brand`}
+                  >
                     <input
                       id={`${row.id}-brand`}
                       className="input"
