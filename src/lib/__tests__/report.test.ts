@@ -62,8 +62,30 @@ const report: VerificationReport = {
       label: [],
       status: 'pass',
       notes: [],
+      ocrPasses: [
+        {
+          id: 'crop-original-block',
+          label: 'Label crop · original · block',
+          psm: 6,
+          variant: 'original',
+          wordCount: 1,
+          confidence: 95,
+        },
+      ],
+      ocrRegion: { x: 0.1, y: 0.1, w: 0.4, h: 0.3 },
+      ocrRegionSource: 'auto',
     },
   ],
+  diagnostics: {
+    capture: { width: 1280, height: 720, requestedFrames: 2, capturedFrames: 1 },
+    ocr: {
+      engine: 'Tesseract.js 7 (LSTM)',
+      passesPerFrame: [1],
+      totalPasses: 1,
+      totalWords: 1,
+      regionSources: ['auto'],
+    },
+  },
   limitations: ['test limitation'],
 };
 
@@ -73,12 +95,15 @@ describe('report export', () => {
       frames: Array<Record<string, unknown>>;
       verdict: string;
       schemaVersion: string;
+      diagnostics: { ocr: { totalPasses: number } };
     };
     expect(json.verdict).toBe('PASS');
     expect(json.schemaVersion).toBe('brandproof.report/1');
     expect(json.frames[0].dataUrl).toBeUndefined();
     expect(Array.isArray(json.frames[0].words)).toBe(true);
     expect(json.frames[0].text).toBe('AURELIA');
+    expect(Array.isArray(json.frames[0].ocrPasses)).toBe(true);
+    expect((json.diagnostics as { ocr: { totalPasses: number } }).ocr.totalPasses).toBe(1);
   });
 
   it('builds a filesystem-safe filename from the brand and timestamp', () => {

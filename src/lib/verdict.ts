@@ -6,7 +6,10 @@ import type {
   ReportConfig,
   ReportMetrics,
   Strictness,
+  OcrPassInfo,
+  OcrRegionSource,
   TokenEvidence,
+  TokenFinding,
   TokenMatch,
   VerificationReport,
   VerifyConfig,
@@ -56,6 +59,9 @@ export interface FrameInput {
   brandTokens: string[];
   labelTokens: string[];
   region: VerifyConfig['region'];
+  ocrPasses?: OcrPassInfo[];
+  ocrRegion?: VerifyConfig['region'];
+  ocrRegionSource?: OcrRegionSource;
 }
 
 export function evaluateFrame(input: FrameInput): FrameSample {
@@ -114,6 +120,15 @@ export function evaluateFrame(input: FrameInput): FrameSample {
       notes.push(`Brand token "${token.expected}" was not found in the readable text.`);
     }
   }
+  for (const token of label) {
+    if (token.status === 'near') {
+      notes.push(
+        `Label token "${token.expected}" read as "${token.matched ?? '—'}" (${formatPercent(token.similarity)} similar) — visibly distorted.`,
+      );
+    } else if (token.status === 'missing' && legibility.legible) {
+      notes.push(`Label token "${token.expected}" was not detected in this frame's readable text.`);
+    }
+  }
 
   return {
     index: input.index,
@@ -130,6 +145,9 @@ export function evaluateFrame(input: FrameInput): FrameSample {
     label,
     status,
     notes,
+    ocrPasses: input.ocrPasses,
+    ocrRegion: input.ocrRegion ?? null,
+    ocrRegionSource: input.ocrRegionSource ?? 'full-frame',
   };
 }
 
@@ -137,6 +155,8 @@ function aggregateTokens(
   kind: 'brand' | 'label',
   tokens: string[],
   frames: FrameSample[],
+  readableCount: number,
+  coverage: number,
 ): TokenEvidence[] {
   return tokens.map((token) => {
     const matches = frames.map((frame) =>
@@ -147,17 +167,45 @@ function aggregateTokens(
       if (!current || entry.similarity > current.similarity) return entry;
       return current;
     }, null);
+    const hits = matches.filter((entry) => entry?.status === 'match').length;
+    const near = matches.filter((entry) => entry?.status === 'near').length;
+    const missing = matches.filter((entry) => entry?.status === 'missing').length;
+    const unreadable = matches.filter((entry) => entry?.status === 'unreadable').length;
     return {
       token,
       kind,
-      hits: matches.filter((entry) => entry?.status === 'match').length,
-      near: matches.filter((entry) => entry?.status === 'near').length,
-      missing: matches.filter((entry) => entry?.status === 'missing').length,
-      unreadable: matches.filter((entry) => entry?.status === 'unreadable').length,
+      hits,
+      near,
+      missing,
+      unreadable,
       bestReading: best?.matched ?? null,
       bestSimilarity: best ? Math.round(best.similarity * 1000) / 1000 : 0,
+      bestConfidence: best?.confidence ?? null,
+      finding: tokenFinding({ hits, near, missing, unreadable }, readableCount, coverage),
     };
   });
+}
+
+/**
+ * Classifies a whole token without treating an OCR miss as a visual mismatch.
+ * "visibly-distorted" requires repeated near-readings; one near reading is not
+ * enough to claim the label changed.
+ */
+export function tokenFinding(
+  counts: { hits: number; near: number; missing: number; unreadable: number },
+  readableCount: number,
+  coverage: number,
+): TokenFinding {
+  if (counts.hits > 0 && counts.hits >= Math.max(1, Math.ceil(readableCount * coverage))) {
+    return 'verified';
+  }
+  if (counts.hits > 0) return 'detected';
+  if (counts.near >= 2) return 'visibly-distorted';
+  if (readableCount === 0) return 'insufficient-evidence';
+  if (counts.near > 0) return 'insufficient-evidence';
+  if (counts.missing > 0) return 'not-detected';
+  if (counts.unreadable > 0) return 'unreadable';
+  return 'insufficient-evidence';
 }
 
 function checkStatusPillLabel(status: CheckStatus): string {
@@ -279,6 +327,14 @@ export function buildReport(input: BuildReportInput): VerificationReport {
   }
   checks.push(brandCheck);
 
+  const labelEvidence = aggregateTokens('label', labelTokens, frames, readableCount, coverage);
+  const distortedLabelTokens = labelEvidence.filter(
+    (evidence) => evidence.finding === 'visibly-distorted',
+  );
+  const readLabelTokens = labelEvidence.filter(
+    (evidence) => evidence.finding === 'verified' || evidence.finding === 'detected',
+  );
+
   let labelCheck: CheckResult;
   if (labelTokens.length === 0) {
     labelCheck = {
@@ -298,6 +354,26 @@ export function buildReport(input: BuildReportInput): VerificationReport {
       detail: 'No readable frames were available for label comparison.',
       metric: `0 / ${frames.length} readable frames`,
     };
+  } else if (distortedLabelTokens.length > 0) {
+    labelCheck = {
+      id: 'label',
+      title: 'Printed label text',
+      status: 'fail',
+      critical: config.labelCritical,
+      detail: `The brand was read, and ${distortedLabelTokens
+        .map((evidence) => `“${evidence.token}” was read as “${evidence.bestReading ?? '—'}”`)
+        .join(', ')} in multiple frames. Repeated near-readings are evidence of visible label distortion, not a single OCR miss.`,
+      metric: `${distortedLabelTokens.length} / ${labelTokens.length} label tokens distorted`,
+    };
+  } else if (readLabelTokens.length === 0) {
+    labelCheck = {
+      id: 'label',
+      title: 'Printed label text',
+      status: 'review',
+      critical: config.labelCritical,
+      detail: `The brand was read, but none of the expected label tokens could be read in ${readableCount} readable frames. This is NOT DETECTED / insufficient evidence, not a confirmed mismatch. Mark the label area, choose a sharper clip, or use more frames.`,
+      metric: `0 / ${readableCount} readable frames`,
+    };
   } else if ((labelRecall ?? 0) >= coverage) {
     labelCheck = {
       id: 'label',
@@ -307,22 +383,13 @@ export function buildReport(input: BuildReportInput): VerificationReport {
       detail: `All expected label tokens were read in ${labelHits ?? 0} of ${readableCount} readable frames (${formatPercent(labelRecall ?? 0)}), meeting the ${formatPercent(coverage)} coverage target.`,
       metric: `${labelHits ?? 0} / ${readableCount} readable frames`,
     };
-  } else if (brandHits >= 2 && (labelHits ?? 0) === 0) {
-    labelCheck = {
-      id: 'label',
-      title: 'Printed label text',
-      status: 'fail',
-      critical: config.labelCritical,
-      detail: `The brand name was read correctly in ${brandHits} frames, but none of the expected label tokens were ever recognised. The label is likely different, missing or replaced.`,
-      metric: `0 / ${readableCount} readable frames`,
-    };
   } else {
     labelCheck = {
       id: 'label',
       title: 'Printed label text',
       status: 'review',
       critical: config.labelCritical,
-      detail: `Expected label tokens were fully read in ${labelHits ?? 0} of ${readableCount} readable frames (${formatPercent(labelRecall ?? 0)}), below the ${formatPercent(coverage)} coverage target.`,
+      detail: `Expected label tokens were read in ${labelHits ?? 0} of ${readableCount} readable frames (${formatPercent(labelRecall ?? 0)}), below the ${formatPercent(coverage)} coverage target. ${readLabelTokens.length} of ${labelTokens.length} label tokens were detected; inspect the per-token evidence before treating this as a change.`,
       metric: `${labelHits ?? 0} / ${readableCount} readable frames`,
     };
   }
@@ -430,8 +497,8 @@ export function buildReport(input: BuildReportInput): VerificationReport {
     checks,
     metrics,
     tokenEvidence: [
-      ...aggregateTokens('brand', brandTokens, frames),
-      ...aggregateTokens('label', labelTokens, frames),
+      ...aggregateTokens('brand', brandTokens, frames, readableCount, coverage),
+      ...aggregateTokens('label', labelTokens, frames, readableCount, coverage),
     ],
     frames,
     limitations: LIMITATIONS,

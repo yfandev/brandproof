@@ -1,7 +1,25 @@
 import { createWorker, PSM } from 'tesseract.js';
-import type { OcrWord, Rect } from '../types';
-import { cropNormalized } from './image';
-import { normalizeText } from './text';
+import type {
+  Bbox,
+  OcrPassInfo,
+  OcrRegionSource,
+  OcrWord,
+  Rect,
+} from '../types';
+import {
+  OCR_CROP_LONG_EDGE,
+  OCR_FULL_FRAME_LONG_EDGE,
+  cropCanvasWithMeta,
+  densestTextRegion,
+  deriveLabelRegion,
+  mapBboxToFrame,
+  mergeOcrWords,
+  preprocessCanvas,
+  upscaleForOcr,
+  type CropTransform,
+  type PreprocessVariant,
+} from './preprocess';
+import { buildCandidates, matchTokens, normalizeText, textFromWords } from './text';
 
 export class OcrError extends Error {}
 
@@ -9,15 +27,86 @@ export interface OcrResult {
   words: OcrWord[];
   text: string;
   confidence: number;
+  passes: OcrPassInfo[];
+  region: Rect | null;
+  regionSource: OcrRegionSource;
 }
 
 export interface OcrOptions {
   region?: Rect | null;
+  /** Brand tokens used to anchor an automatic label crop after the first pass. */
+  focusTokens?: string[];
+  /** Off for a quick full-photo scan; on for verification. */
+  autoRegion?: boolean;
+  thorough?: boolean;
   onProgress?: (progress: number, status: string) => void;
   onEngineStatus?: (status: string) => void;
 }
 
 type TesseractWorker = Awaited<ReturnType<typeof createWorker>>;
+
+interface PassSpec {
+  id: string;
+  label: string;
+  variant: PreprocessVariant;
+  psm: PSM;
+}
+
+const FULL_PASS: PassSpec = {
+  id: 'full-original',
+  label: 'Full frame · original · sparse',
+  variant: 'original',
+  psm: PSM.SPARSE_TEXT,
+};
+
+const FULL_CONTRAST_PASS: PassSpec = {
+  id: 'full-contrast',
+  label: 'Full frame · contrast · sparse',
+  variant: 'contrast',
+  psm: PSM.SPARSE_TEXT,
+};
+
+const CROP_PASSES: PassSpec[] = [
+  {
+    id: 'crop-original-block',
+    label: 'Label crop · original · block',
+    variant: 'original',
+    psm: PSM.SINGLE_BLOCK,
+  },
+  {
+    id: 'crop-grayscale-block',
+    label: 'Label crop · grayscale · block',
+    variant: 'grayscale',
+    psm: PSM.SINGLE_BLOCK,
+  },
+  {
+    id: 'crop-contrast-block',
+    label: 'Label crop · contrast · block',
+    variant: 'contrast',
+    psm: PSM.SINGLE_BLOCK,
+  },
+  {
+    id: 'crop-threshold-block',
+    label: 'Label crop · adaptive threshold · block',
+    variant: 'threshold',
+    psm: PSM.SINGLE_BLOCK,
+  },
+  {
+    id: 'crop-original-sparse',
+    label: 'Label crop · original · sparse',
+    variant: 'original',
+    psm: PSM.SPARSE_TEXT,
+  },
+];
+
+const CROP_INVERTED_PASS: PassSpec = {
+  id: 'crop-threshold-inverted-block',
+  label: 'Label crop · inverted threshold · block',
+  variant: 'threshold-inverted',
+  psm: PSM.SINGLE_BLOCK,
+};
+
+const CROP_FAST_PASSES: PassSpec[] = CROP_PASSES.slice(0, 3);
 
 let workerPromise: Promise<TesseractWorker> | null = null;
 let progressHandler: ((progress: number, status: string) => void) | null = null;
@@ -44,7 +133,7 @@ async function getWorker(): Promise<TesseractWorker> {
       .then(async (worker) => {
         await worker.setParameters({
           preserve_interword_spaces: '1',
-          user_defined_dpi: '150',
+          user_defined_dpi: '300',
         });
         return worker;
       })
@@ -74,20 +163,8 @@ export async function disposeOcr(): Promise<void> {
   }
 }
 
-function upscaleCanvas(source: HTMLCanvasElement, scale: number): HTMLCanvasElement {
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(source.width * scale));
-  canvas.height = Math.max(1, Math.round(source.height * scale));
-  const context = canvas.getContext('2d');
-  if (!context) throw new OcrError('This browser could not create a 2D canvas context.');
-  context.imageSmoothingEnabled = true;
-  context.imageSmoothingQuality = 'high';
-  context.drawImage(source, 0, 0, canvas.width, canvas.height);
-  return canvas;
-}
-
-function collectWords(blocks: unknown): Array<{ text: string; confidence: number; bbox: OcrWord['bbox'] }> {
-  const output: Array<{ text: string; confidence: number; bbox: OcrWord['bbox'] }> = [];
+function collectWords(blocks: unknown): Array<{ text: string; confidence: number; bbox: Bbox }> {
+  const output: Array<{ text: string; confidence: number; bbox: Bbox }> = [];
   if (!Array.isArray(blocks)) return output;
 
   for (const block of blocks) {
@@ -129,60 +206,220 @@ function collectWords(blocks: unknown): Array<{ text: string; confidence: number
   return output;
 }
 
-/**
- * Runs Tesseract on a frame (or a normalized crop of it) and maps every word
- * box back into normalized 0..1 coordinates of the full frame.
- */
-export async function recognizeCanvas(canvas: HTMLCanvasElement, options: OcrOptions = {}): Promise<OcrResult> {
-  const region = options.region ?? null;
-  const source = region ? cropNormalized(canvas, region) : canvas;
+interface PassResult {
+  words: OcrWord[];
+  info: OcrPassInfo;
+}
 
-  const targetWidth = region ? 720 : 1400;
-  const scale = Math.max(1, Math.min(3, targetWidth / Math.max(1, source.width)));
-  const input = scale > 1.05 ? upscaleCanvas(source, scale) : source;
-  const effectiveScale = input.width / Math.max(1, source.width);
+async function runPass(
+  worker: TesseractWorker,
+  source: HTMLCanvasElement,
+  spec: PassSpec,
+  transform: CropTransform,
+  onProgress: ((value: number) => void) | undefined,
+): Promise<PassResult> {
+  const input = preprocessCanvas(source, spec.variant);
+  await worker.setParameters({
+    tessedit_pageseg_mode: spec.psm,
+    preserve_interword_spaces: '1',
+    user_defined_dpi: '300',
+  });
 
-  progressHandler = options.onProgress ?? null;
-  engineStatusHandler = options.onEngineStatus ?? null;
+  progressHandler = (value) => onProgress?.(Math.max(0, Math.min(1, value)));
+  engineStatusHandler = null;
 
   try {
-    const worker = await getWorker();
-    await worker.setParameters({
-      tessedit_pageseg_mode: region ? PSM.SINGLE_BLOCK : PSM.SPARSE_TEXT,
-    });
     const { data } = await worker.recognize(input, {}, { blocks: true, text: true });
-
-    const offsetX = region ? region.x * canvas.width : 0;
-    const offsetY = region ? region.y * canvas.height : 0;
-    const clamp = (value: number) => Math.max(0, Math.min(1, value));
-
     const words: OcrWord[] = collectWords(data.blocks)
       .map((word) => {
-        const x0 = clamp((offsetX + word.bbox.x0 / effectiveScale) / canvas.width);
-        const y0 = clamp((offsetY + word.bbox.y0 / effectiveScale) / canvas.height);
-        const x1 = clamp((offsetX + word.bbox.x1 / effectiveScale) / canvas.width);
-        const y1 = clamp((offsetY + word.bbox.y1 / effectiveScale) / canvas.height);
+        const bbox = mapBboxToFrame(word.bbox, transform);
         const normalized = normalizeText(word.text);
         return {
           text: word.text,
           normalized,
           confidence: Math.round(word.confidence * 10) / 10,
-          bbox: { x0, y0, x1, y1 },
+          bbox,
         };
       })
-      .filter((word) => word.normalized.length > 0 && word.bbox.x1 > word.bbox.x0 && word.bbox.y1 > word.bbox.y0);
+      .filter(
+        (word) =>
+          word.normalized.length > 0 &&
+          word.bbox.x1 > word.bbox.x0 &&
+          word.bbox.y1 > word.bbox.y0,
+      );
 
     return {
       words,
-      text: typeof data.text === 'string' ? data.text.trim() : '',
-      confidence: typeof data.confidence === 'number' ? data.confidence : 0,
+      info: {
+        id: spec.id,
+        label: spec.label,
+        psm: Number(spec.psm),
+        variant: spec.variant,
+        wordCount: words.length,
+        confidence:
+          typeof data.confidence === 'number' ? Math.round(data.confidence * 10) / 10 : 0,
+      },
     };
-  } catch (error) {
-    if (error instanceof OcrError) throw error;
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new OcrError(`OCR failed while reading a frame: ${detail}`);
   } finally {
     progressHandler = null;
-    engineStatusHandler = null;
   }
+}
+
+function anchorRegion(words: OcrWord[], focusTokens: string[]): Rect | null {
+  if (words.length === 0) return null;
+
+  if (focusTokens.length > 0) {
+    const matches = matchTokens(focusTokens, buildCandidates(words), 0.62, 25)
+      .filter((match) => match.bbox && match.similarity >= 0.62)
+      .sort((a, b) => b.similarity - a.similarity);
+    const best = matches[0];
+    if (best?.bbox) {
+      const region = deriveLabelRegion(best.bbox);
+      if (region) return region;
+    }
+  }
+
+  return densestTextRegion(words);
+}
+
+function meanConfidence(words: OcrWord[]): number {
+  if (words.length === 0) return 0;
+  return (
+    Math.round(
+      (words.reduce((total, word) => total + word.confidence, 0) / words.length) * 10,
+    ) / 10
+  );
+}
+
+/**
+ * Runs a full-frame pass, derives a label crop from the brand or the densest
+ * text cluster, then re-runs several preprocessing/PSM variants on that crop.
+ * Every returned word keeps its real full-frame box and confidence.
+ */
+export async function recognizeCanvas(
+  canvas: HTMLCanvasElement,
+  options: OcrOptions = {},
+): Promise<OcrResult> {
+  const manualRegion = options.region ?? null;
+  const thorough = options.thorough ?? true;
+  const autoRegion = options.autoRegion ?? false;
+  const passes: OcrPassInfo[] = [];
+  const collected: OcrWord[] = [];
+  let successfulPasses = 0;
+  let firstError: string | null = null;
+
+  const worker = await getWorker();
+
+  const run = async (
+    spec: PassSpec,
+    source: HTMLCanvasElement,
+    transform: CropTransform,
+    rangeStart: number,
+    rangeEnd: number,
+  ): Promise<PassResult | null> => {
+    progressHandler = null;
+    engineStatusHandler = options.onEngineStatus ?? null;
+    try {
+      const result = await runPass(worker, source, spec, transform, (value) => {
+        options.onProgress?.(rangeStart + (rangeEnd - rangeStart) * value, spec.label);
+      });
+      successfulPasses += 1;
+      passes.push(result.info);
+      collected.push(...result.words);
+      options.onProgress?.(rangeEnd, spec.label);
+      return result;
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      firstError ??= detail;
+      passes.push({
+        id: spec.id,
+        label: spec.label,
+        psm: Number(spec.psm),
+        variant: spec.variant,
+        wordCount: 0,
+        confidence: 0,
+        error: detail,
+      });
+      return null;
+    }
+  };
+
+  const fullUpscaled = upscaleForOcr(canvas, OCR_FULL_FRAME_LONG_EDGE);
+  const fullTransform: CropTransform = {
+    frameWidth: canvas.width,
+    frameHeight: canvas.height,
+    cropX: 0,
+    cropY: 0,
+    scale: fullUpscaled.width / Math.max(1, canvas.width),
+  };
+
+  const fullResult = await run(
+    FULL_PASS,
+    fullUpscaled,
+    fullTransform,
+    0,
+    manualRegion || autoRegion ? 0.3 : 0.45,
+  );
+  const fullWords = fullResult?.words ?? [];
+
+  let region: Rect | null = manualRegion;
+  let regionSource: OcrRegionSource = manualRegion ? 'manual' : 'full-frame';
+
+  if (!region && autoRegion) {
+    region = anchorRegion(fullWords, options.focusTokens ?? []);
+    if (region) regionSource = 'auto';
+  }
+
+  if (region && (manualRegion || autoRegion)) {
+    const crop = cropCanvasWithMeta(canvas, region);
+    const cropUpscaled = upscaleForOcr(crop.canvas, OCR_CROP_LONG_EDGE);
+    const transform: CropTransform = {
+      frameWidth: canvas.width,
+      frameHeight: canvas.height,
+      cropX: crop.crop.x,
+      cropY: crop.crop.y,
+      scale: cropUpscaled.width / Math.max(1, crop.crop.w),
+    };
+
+    const specs = thorough ? CROP_PASSES : CROP_FAST_PASSES;
+    for (let index = 0; index < specs.length; index += 1) {
+      const spec = specs[index];
+      const start = 0.3 + (0.68 * index) / specs.length;
+      const end = 0.3 + (0.68 * (index + 1)) / specs.length;
+      const result = await run(spec, cropUpscaled, transform, start, end);
+
+      // White-on-dark packaging often needs the inverse threshold. Only pay for
+      // it when the normal threshold pass found almost nothing.
+      if (
+        thorough &&
+        spec.variant === 'threshold' &&
+        result &&
+        result.words.length < 2
+      ) {
+        await run(CROP_INVERTED_PASS, cropUpscaled, transform, end, Math.min(0.98, end + 0.04));
+      }
+    }
+  } else if (!manualRegion) {
+    // No reliable crop. Keep a contrast full-frame pass as a fallback.
+    await run(FULL_CONTRAST_PASS, fullUpscaled, fullTransform, 0.45, 0.98);
+  }
+
+  if (successfulPasses === 0) {
+    throw new OcrError(
+      `OCR failed on every pass${firstError ? `: ${firstError}` : '.'} Try importing the clip again or mark the label area manually.`,
+    );
+  }
+
+  const words = mergeOcrWords(collected);
+  const text = textFromWords(words);
+
+  options.onProgress?.(1, 'OCR complete');
+  return {
+    words,
+    text,
+    confidence: meanConfidence(words),
+    passes,
+    region,
+    regionSource: region ? regionSource : 'full-frame',
+  };
 }

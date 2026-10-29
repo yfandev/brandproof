@@ -4,6 +4,7 @@ import type {
   Rect,
   ReferenceAsset,
   TokenEvidence,
+  TokenFinding,
   TokenMatch,
   TokenStatus,
   VerificationReport,
@@ -26,6 +27,28 @@ const TOKEN_SYMBOL: Record<TokenStatus, string> = {
   near: '~',
   missing: '—',
   unreadable: '?',
+};
+
+const TOKEN_STATUS_LABEL: Record<TokenStatus, string> = {
+  match: 'MATCH',
+  near: 'VISIBLY DISTORTED',
+  missing: 'NOT DETECTED',
+  unreadable: 'UNREADABLE',
+};
+
+const TOKEN_FINDING_LABEL: Record<TokenFinding, string> = {
+  verified: 'VERIFIED',
+  detected: 'DETECTED',
+  'visibly-distorted': 'VISIBLY DISTORTED',
+  'not-detected': 'NOT DETECTED',
+  unreadable: 'UNREADABLE',
+  'insufficient-evidence': 'INSUFFICIENT EVIDENCE',
+};
+
+const REGION_SOURCE_LABEL: Record<NonNullable<FrameSample['ocrRegionSource']>, string> = {
+  manual: 'manual label area',
+  auto: 'automatic label crop',
+  'full-frame': 'full frame',
 };
 
 function bboxKey(match: TokenMatch): string {
@@ -75,7 +98,7 @@ function TokenChip({ token, kind }: { token: TokenMatch; kind: 'brand' | 'label'
           ? `${kind} token · best reading “${token.matched}” · ${Math.round(token.similarity * 100)}% similar${
               token.confidence !== null ? ` · word confidence ${Math.round(token.confidence)}` : ''
             }`
-          : `${kind} token · no readable candidate`
+          : `${kind} token · ${TOKEN_STATUS_LABEL[token.status]} · no readable candidate`
       }
     >
       <span className="tok__kind" aria-hidden="true">
@@ -83,6 +106,11 @@ function TokenChip({ token, kind }: { token: TokenMatch; kind: 'brand' | 'label'
       </span>
       <span className="tok__expected">{token.expected}</span>
       <span className="tok__mark">{TOKEN_SYMBOL[token.status]}</span>
+      {token.status !== 'match' && (
+        <span className={`tok__status tok__status--${token.status}`}>
+          {TOKEN_STATUS_LABEL[token.status]}
+        </span>
+      )}
       {token.matched && token.status !== 'match' && (
         <span className="tok__reading">“{token.matched}”</span>
       )}
@@ -91,10 +119,19 @@ function TokenChip({ token, kind }: { token: TokenMatch; kind: 'brand' | 'label'
 }
 
 function tokenTone(evidence: TokenEvidence): Tone {
-  if (evidence.hits > 0) return 'pass';
-  if (evidence.near > 0) return 'review';
-  if (evidence.unreadable > 0 && evidence.missing === 0) return 'neutral';
-  return 'fail';
+  switch (evidence.finding) {
+    case 'verified':
+      return 'pass';
+    case 'visibly-distorted':
+      return 'fail';
+    case 'detected':
+    case 'not-detected':
+      return 'review';
+    case 'unreadable':
+    case 'insufficient-evidence':
+    default:
+      return 'neutral';
+  }
 }
 
 function TokenMatrix({ report }: { report: VerificationReport }) {
@@ -128,9 +165,16 @@ function TokenMatrix({ report }: { report: VerificationReport }) {
                   <Pill tone={evidence.kind === 'brand' ? 'accent' : 'neutral'}>{evidence.kind}</Pill>
                 </td>
                 <td className="matrix__best">
-                  <Pill tone={tokenTone(evidence)}>{evidence.hits > 0 ? 'read' : evidence.near > 0 ? 'near' : 'absent'}</Pill>
+                  <Pill tone={tokenTone(evidence)}>{TOKEN_FINDING_LABEL[evidence.finding]}</Pill>
                   {evidence.bestReading && (
-                    <span className="matrix__reading" title={`${Math.round(evidence.bestSimilarity * 100)}% similar`}>
+                    <span
+                      className="matrix__reading"
+                      title={`${Math.round(evidence.bestSimilarity * 100)}% similar${
+                        evidence.bestConfidence !== null
+                          ? ` · word confidence ${Math.round(evidence.bestConfidence)}`
+                          : ''
+                      }`}
+                    >
                       “{evidence.bestReading}”
                     </span>
                   )}
@@ -146,7 +190,7 @@ function TokenMatrix({ report }: { report: VerificationReport }) {
                       className={`matrix__cell matrix__cell--${status}`}
                       title={
                         match
-                          ? `${status} · ${Math.round(match.similarity * 100)}%${match.matched ? ` · “${match.matched}”` : ''}`
+                          ? `${TOKEN_STATUS_LABEL[status]} · ${Math.round(match.similarity * 100)}%${match.matched ? ` · “${match.matched}”` : ''}`
                           : 'not evaluated in this frame'
                       }
                     >
@@ -159,7 +203,10 @@ function TokenMatrix({ report }: { report: VerificationReport }) {
           </tbody>
         </table>
       </div>
-      <p className="micro">✓ matched · ~ near match · — missing · ? frame unreadable. Same symbol scale as the evidence cards.</p>
+      <p className="micro">
+        ✓ matched · ~ visibly distorted (repeated near-reading) · — not detected · ? frame unreadable. NOT DETECTED
+        and UNREADABLE are insufficient evidence, not proof that the label changed.
+      </p>
     </div>
   );
 }
@@ -261,6 +308,49 @@ export function EvidenceReport({
         </ul>
       </section>
 
+      {report.diagnostics && (
+        <section className="block">
+          <div className="block__head">
+            <h3>Capture &amp; OCR diagnostics</h3>
+            <p>
+              What the browser actually sampled. If the brand is read but small label lines are not, check the capture
+              size and region here before treating it as a label change.
+            </p>
+          </div>
+          <dl className="diagnostics">
+            <div>
+              <dt>Captured frame</dt>
+              <dd>
+                {report.diagnostics.capture.width}×{report.diagnostics.capture.height}
+              </dd>
+              <small>
+                {report.diagnostics.capture.capturedFrames} of {report.diagnostics.capture.requestedFrames} requested
+              </small>
+            </div>
+            <div>
+              <dt>OCR passes</dt>
+              <dd>{report.diagnostics.ocr.totalPasses}</dd>
+              <small>{report.diagnostics.ocr.passesPerFrame.join(' / ')} per frame</small>
+            </div>
+            <div>
+              <dt>Label regions</dt>
+              <dd>{report.diagnostics.ocr.regionSources.map((source) => REGION_SOURCE_LABEL[source]).join(', ')}</dd>
+              <small>automatic crop is derived from the brand or densest text</small>
+            </div>
+            <div>
+              <dt>Merged words</dt>
+              <dd>{report.diagnostics.ocr.totalWords}</dd>
+              <small>across all sampled frames</small>
+            </div>
+          </dl>
+          <p className="micro">
+            {report.diagnostics.ocr.regionSources.includes('auto')
+              ? 'The label crop is automatic and may clip surrounding text. Mark the label area manually if lines are still missing.'
+              : 'No automatic crop was applied. A manual label area usually gives the best small-text result.'}
+          </p>
+        </section>
+      )}
+
       <section className="block">
         <div className="block__head">
           <h3>Visual comparison</h3>
@@ -323,8 +413,9 @@ export function EvidenceReport({
         <div className="block__head">
           <h3>Frame evidence</h3>
           <p>
-            {report.frames.length} sampled frames with Tesseract word boxes. Lime = matched expected token, amber = near
-            match, grey = other recognised text.
+            {report.frames.length} sampled frames with merged Tesseract word boxes from every OCR pass. Lime = matched
+            expected token, amber = near match, grey = other recognised text. A frame without label text is reported as
+            NOT DETECTED, not as a confirmed change.
           </p>
         </div>
 
@@ -430,6 +521,8 @@ export function EvidenceReport({
 
             <div className="frame__facts">
               <span>{frame.words.length} words</span>
+              <span>{frame.ocrPasses?.length ?? 0} OCR passes</span>
+              <span>{REGION_SOURCE_LABEL[frame.ocrRegionSource ?? 'full-frame']}</span>
               <span>OCR confidence {frame.meanConfidence || '—'}</span>
               <span>Frame palette {pct(frame.paletteSimilarity)}</span>
             </div>

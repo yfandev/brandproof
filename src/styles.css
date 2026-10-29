@@ -509,10 +509,15 @@ h1 span {
   transform: translateY(0);
 }
 
-.btn:disabled {
+.btn:disabled,
+.btn[aria-disabled='true'] {
   opacity: 0.42;
   cursor: not-allowed;
   transform: none;
+}
+
+.btn[aria-disabled='true'] {
+  pointer-events: none;
 }
 
 .btn--primary {
@@ -1237,7 +1242,7 @@ select.input {
 
 .tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
   padding: 4px;
   border: 1px solid var(--line);
@@ -1555,6 +1560,351 @@ select.input {
 
 .log__line--error .log__marker {
   background: var(--fail);
+}
+
+/* ---------- comfy cloud ---------- */
+
+.cloud {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cloud__intro {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.cloud__intro > div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cloud__lead {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.cloud__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.cloud__promptwrap {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(4, 5, 8, 0.55);
+  overflow: hidden;
+}
+
+.cloud__prompthead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px 0;
+}
+
+.cloud__prompt {
+  margin: 0;
+  padding: 9px 12px 12px;
+  max-height: 190px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.cloud__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  counter-reset: cloudstep;
+}
+
+.cloud__steps li {
+  counter-increment: cloudstep;
+  display: grid;
+  grid-template-columns: 19px minmax(0, 1fr);
+  gap: 9px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.cloud__steps li::before {
+  content: counter(cloudstep);
+  width: 18px;
+  height: 18px;
+  border: 1px solid rgba(215, 255, 95, 0.3);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--accent);
+  margin-top: 1px;
+}
+
+.cloud__steps strong {
+  color: var(--text);
+  font-weight: 520;
+}
+
+.cloud-return {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  border: 1px solid rgba(215, 255, 95, 0.24);
+  border-radius: var(--radius);
+  padding: 13px;
+  background: rgba(215, 255, 95, 0.035);
+}
+
+.cloud-return__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 200px;
+}
+
+.cloud-return__title {
+  font-size: 12.5px;
+  font-weight: 560;
+}
+
+.cloud-setup {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  border: 1px solid rgba(255, 196, 92, 0.28);
+  border-radius: var(--radius);
+  padding: 13px;
+  background: rgba(255, 196, 92, 0.045);
+}
+
+.cloud-setup__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 220px;
+}
+
+.cloud-setup__title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--review);
+}
+
+.cloud-setup code {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.cloud-workflow {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 13px;
+  background: rgba(255, 255, 255, 0.014);
+}
+
+.cloud-workflow__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cloud-workflow__head > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 210px;
+}
+
+.cloud__file {
+  font-family: var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.cloud-paste {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.cloud-paste__area {
+  min-height: 104px;
+  resize: vertical;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.cloud-bindings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--muted);
+}
+
+.cloud-bindings span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 7px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.cloud-generate {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid rgba(215, 255, 95, 0.2);
+  border-radius: var(--radius);
+  padding: 13px;
+  background: rgba(215, 255, 95, 0.025);
+}
+
+.cloud-generate__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cloud-generate__row > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 210px;
+}
+
+.cloud-generate__title {
+  font-size: 12.5px;
+  font-weight: 560;
+}
+
+.cloud-generate__actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.cloud-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.cloud-progress__top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text);
+}
+
+.cloud-progress__top span:last-child {
+  color: var(--dim);
+}
+
+.cloud-progress__bar {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+
+.cloud-progress__bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+
+.cloud-progress__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--dim);
+}
+
+.cloud-progress--done .cloud-progress__bar span {
+  background: var(--pass);
+}
+
+.cloud-progress--error .cloud-progress__bar span {
+  background: var(--fail);
+}
+
+.cloud-details {
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.cloud-details summary {
+  cursor: pointer;
+  color: var(--dim);
+}
+
+.cloud-details ul {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+}
+
+.mono {
+  font-family: var(--mono);
+}
+
+@media (max-width: 700px) {
+  .cloud__intro,
+  .cloud-workflow__head {
+    flex-direction: column;
+  }
+
+  .tabs .tab {
+    font-size: 10.5px;
+    padding-inline: 6px;
+  }
 }
 
 /* ---------- verify ---------- */
@@ -2276,6 +2626,7 @@ select.input {
   color: var(--muted);
   background: rgba(255, 255, 255, 0.022);
   max-width: 100%;
+  flex-wrap: wrap;
 }
 
 .tok--match {
@@ -2324,6 +2675,25 @@ select.input {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 90px;
+}
+
+.tok__status {
+  color: var(--review);
+  font-size: 8px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.tok__status--missing {
+  color: var(--fail);
+}
+
+.tok__status--near {
+  color: var(--review);
+}
+
+.tok__status--unreadable {
+  color: var(--dim);
 }
 
 .ocrtext {
@@ -2454,6 +2824,51 @@ select.input {
   max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.diagnostics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.diagnostics > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 11px 12px;
+  background: rgba(4, 5, 8, 0.72);
+}
+
+.diagnostics dt {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.diagnostics dd {
+  font-size: 18px;
+  font-weight: 560;
+  letter-spacing: -0.02em;
+}
+
+.diagnostics small {
+  color: var(--dim);
+  font-size: 9.5px;
+  line-height: 1.4;
+}
+
+@media (max-width: 800px) {
+  .diagnostics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .matrix__cell {

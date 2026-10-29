@@ -125,7 +125,7 @@ describe('verdict aggregation', () => {
     expect(report.checks.find((check) => check.id === 'brand')?.status).toBe('review');
   });
 
-  it('fails on a critical label failure when the brand is read correctly', () => {
+  it('reviews when expected label lines are simply not detected', () => {
     const frames = Array.from({ length: 9 }, () => [
       'AURELIA',
       'HYDRATING',
@@ -134,15 +134,48 @@ describe('verdict aggregation', () => {
       'ML',
     ]);
     const report = makeReport(config, frames);
-    expect(report.verdict).toBe('FAIL');
-    expect(report.checks.find((check) => check.id === 'label')?.status).toBe('fail');
+    expect(report.verdict).toBe('REVIEW');
+    expect(report.checks.find((check) => check.id === 'label')?.status).toBe('review');
+    expect(
+      report.tokenEvidence.find((evidence) => evidence.token === 'renewal')?.finding,
+    ).toBe('not-detected');
   });
 
-  it('downgrades a non-critical label failure to REVIEW', () => {
+  it('fails when a label token is repeatedly read as a near miss', () => {
     const frames = Array.from({ length: 9 }, () => [
       'AURELIA',
-      'HYDRATING',
-      'GEL',
+      'RENEWAI',
+      'SERUM',
+      '30',
+      'ML',
+    ]);
+    const report = makeReport(config, frames);
+    expect(report.verdict).toBe('FAIL');
+    expect(report.checks.find((check) => check.id === 'label')?.status).toBe('fail');
+    expect(
+      report.tokenEvidence.find((evidence) => evidence.token === 'renewal')?.finding,
+    ).toBe('visibly-distorted');
+  });
+
+  it('does not fail on a single near reading', () => {
+    const frames = Array.from({ length: 9 }, (_, index) =>
+      index === 0
+        ? ['AURELIA', 'RENEWAI', 'SERUM', '30', 'ML']
+        : ['AURELIA', 'HYDRATING', 'GEL', '30', 'ML'],
+    );
+    const report = makeReport(config, frames);
+    expect(report.verdict).toBe('REVIEW');
+    expect(report.checks.find((check) => check.id === 'label')?.status).toBe('review');
+    expect(
+      report.tokenEvidence.find((evidence) => evidence.token === 'renewal')?.finding,
+    ).toBe('insufficient-evidence');
+  });
+
+  it('downgrades a non-critical distorted label to REVIEW', () => {
+    const frames = Array.from({ length: 9 }, () => [
+      'AURELIA',
+      'RENEWAI',
+      'SERUM',
       '30',
       'ML',
     ]);

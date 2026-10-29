@@ -251,6 +251,12 @@ export function groupLines(words: OcrWord[]): TextLine[] {
     .filter((line) => line.text.length > 0);
 }
 
+export function textFromWords(words: OcrWord[]): string {
+  return groupLines(words)
+    .map((line) => line.text)
+    .join('\n');
+}
+
 export function thresholdFor(strictness: Strictness): number {
   switch (strictness) {
     case 'strict':

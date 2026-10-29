@@ -181,14 +181,14 @@ export function ComfyPanel({
   return (
     <div className="comfy">
       <div className="comfy__intro">
-        <Pill tone="accent">your own GPU</Pill>
+        <Pill tone="neutral">local GPU · advanced</Pill>
         <p>
-          BrandProof calls a free, self-hosted{' '}
+          This advanced path calls a self-hosted{' '}
           <a href="https://docs.comfy.org/get_started/introduction" target="_blank" rel="noreferrer noopener">
             ComfyUI
           </a>{' '}
-          server directly from this tab. No paid API is used. Comfy Cloud needs paid credits, so it is supported through
-          Import instead.
+          server directly from this tab. For the primary no-install path, use the <strong>Comfy Cloud</strong> tab; it
+          opens the real LTX-2.3 workflow and verifies the MP4 you bring back.
         </p>
       </div>
 

@@ -9,7 +9,7 @@ export interface CapturedFrame {
 
 export class FrameCaptureError extends Error {}
 
-const MAX_CAPTURE_WIDTH = 1280;
+const MAX_CAPTURE_WIDTH = 1920;
 const SEEK_TIMEOUT_MS = 12000;
 
 function seek(video: HTMLVideoElement, time: number): Promise<void> {

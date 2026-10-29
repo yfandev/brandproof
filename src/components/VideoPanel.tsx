@@ -1,24 +1,34 @@
 import { useRef, useState } from 'react';
 import type { DragEvent, RefObject } from 'react';
-import type { ReferenceAsset, VideoAsset } from '../types';
+import type { ClipSource, ReferenceAsset, VideoAsset } from '../types';
 import { DEFAULT_NEGATIVE_PROMPT } from '../lib/scenes';
+import { ComfyCloudPanel } from './ComfyCloudPanel';
 import { ComfyPanel } from './ComfyPanel';
 import { Alert, Card, EmptyState, Pill, formatSeconds } from './ui';
 
 interface VideoPanelProps {
-  source: 'generate' | 'import';
-  onSourceChange: (source: 'generate' | 'import') => void;
+  source: ClipSource;
+  onSourceChange: (source: ClipSource) => void;
   video: VideoAsset | null;
   videoRef: RefObject<HTMLVideoElement | null>;
   error: string | null;
   importing: boolean;
   product: ReferenceAsset | null;
   prompt: string;
+  brand: string;
   onImport: (file: File) => void;
+  onCloudImport: (file: File) => void;
+  onCloudGenerated: (blob: Blob, filename: string) => void;
   onClearVideo: () => void;
   onClearError: () => void;
   onGenerated: (blob: Blob, filename: string) => void;
   onDurationChange: (duration: number) => void;
+}
+
+function sourceLabel(video: VideoAsset): string {
+  if (video.source === 'cloud') return 'Comfy Cloud';
+  if (video.source === 'generated') return 'local ComfyUI';
+  return 'imported';
 }
 
 export function VideoPanel({
@@ -30,7 +40,10 @@ export function VideoPanel({
   importing,
   product,
   prompt,
+  brand,
   onImport,
+  onCloudImport,
+  onCloudGenerated,
   onClearVideo,
   onClearError,
   onGenerated,
@@ -50,11 +63,11 @@ export function VideoPanel({
     <Card
       index="03 · Clip"
       title="Advertising clip"
-      description="Generate it with your own ComfyUI, or import a clip made anywhere — including Comfy Cloud."
+      description="Generate directly on Comfy Cloud with BrandProof's bundled LTX-2.3 workflow, use a local ComfyUI if you have one, or import a clip made anywhere."
       aside={
         video ? (
-          <Pill tone={video.source === 'generated' ? 'accent' : 'neutral'} dot>
-            {video.source === 'generated' ? 'generated here' : 'imported'}
+          <Pill tone={video.source === 'generated' || video.source === 'cloud' ? 'accent' : 'neutral'} dot>
+            {sourceLabel(video)}
           </Pill>
         ) : (
           <Pill tone="neutral">no clip</Pill>
@@ -90,7 +103,7 @@ export function VideoPanel({
                   </svg>
                 }
               >
-                Generate a clip with a local ComfyUI, or import an MP4 exported from Comfy Cloud.
+                Generate on Comfy Cloud with the bundled LTX-2.3 workflow, or import an MP4 you already generated.
               </EmptyState>
             </div>
           )}
@@ -124,13 +137,24 @@ export function VideoPanel({
             <button
               type="button"
               role="tab"
-              id="tab-generate"
-              aria-selected={source === 'generate'}
-              aria-controls="panel-generate"
-              className={`tab ${source === 'generate' ? 'tab--active' : ''}`}
-              onClick={() => onSourceChange('generate')}
+              id="tab-cloud"
+              aria-selected={source === 'cloud'}
+              aria-controls="panel-cloud"
+              className={`tab ${source === 'cloud' ? 'tab--active' : ''}`}
+              onClick={() => onSourceChange('cloud')}
             >
-              Generate video
+              Comfy Cloud
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="tab-local"
+              aria-selected={source === 'local'}
+              aria-controls="panel-local"
+              className={`tab ${source === 'local' ? 'tab--active' : ''}`}
+              onClick={() => onSourceChange('local')}
+            >
+              Local ComfyUI
             </button>
             <button
               type="button"
@@ -141,11 +165,37 @@ export function VideoPanel({
               className={`tab ${source === 'import' ? 'tab--active' : ''}`}
               onClick={() => onSourceChange('import')}
             >
-              Import existing video
+              Import
             </button>
           </div>
 
-          {source === 'import' ? (
+          {source === 'cloud' && (
+            <div id="panel-cloud" role="tabpanel" aria-labelledby="tab-cloud" className="tabpanel">
+              <ComfyCloudPanel
+                product={product}
+                prompt={prompt}
+                negativePrompt={DEFAULT_NEGATIVE_PROMPT}
+                brand={brand}
+                onCloudGenerated={onCloudGenerated}
+                onCloudImport={onCloudImport}
+              />
+            </div>
+          )}
+
+          {source === 'local' && (
+            <div id="panel-local" role="tabpanel" aria-labelledby="tab-local" className="tabpanel">
+              <ComfyPanel
+                imageFile={product?.file ?? null}
+                imageWidth={product?.width ?? 0}
+                imageHeight={product?.height ?? 0}
+                prompt={prompt}
+                negativePrompt={DEFAULT_NEGATIVE_PROMPT}
+                onGenerated={onGenerated}
+              />
+            </div>
+          )}
+
+          {source === 'import' && (
             <div id="panel-import" role="tabpanel" aria-labelledby="tab-import" className="tabpanel">
               <input
                 ref={inputRef}
@@ -184,28 +234,17 @@ export function VideoPanel({
               </div>
 
               <div className="workflow-help">
-                <p className="workflow-help__title">Generate the clip in Comfy Cloud, then import it</p>
+                <p className="workflow-help__title">Import with automatic verification</p>
                 <ol className="workflow-help__steps">
-                  <li>Open the Wan 2.2 5B workflow in Comfy Cloud and upload this product photo to Load Image.</li>
-                  <li>Paste the prompt from step 02, keep the label text explicit, and run the workflow.</li>
-                  <li>Download the MP4 result, then drop it here. Verification runs locally on this clip.</li>
+                  <li>Generate on Comfy Cloud with the bundled LTX-2.3 workflow.</li>
+                  <li>BrandProof downloads the returned MP4 and loads it automatically.</li>
+                  <li>OCR verification starts automatically when a brand is set.</li>
                 </ol>
                 <p className="micro">
-                  Comfy Cloud needs paid credits, so BrandProof does not call it with an embedded key. Direct generation
-                  here is for self-hosted ComfyUI only.
+                  The clip is processed locally. A generated prompt is not evidence: only the OCR report on this MP4 can
+                  support a PASS.
                 </p>
               </div>
-            </div>
-          ) : (
-            <div id="panel-generate" role="tabpanel" aria-labelledby="tab-generate" className="tabpanel">
-              <ComfyPanel
-                imageFile={product?.file ?? null}
-                imageWidth={product?.width ?? 0}
-                imageHeight={product?.height ?? 0}
-                prompt={prompt}
-                negativePrompt={DEFAULT_NEGATIVE_PROMPT}
-                onGenerated={onGenerated}
-              />
             </div>
           )}
         </div>

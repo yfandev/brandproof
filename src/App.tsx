@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   AnalysisState,
+  ClipSource,
   Rect,
   ReferenceAsset,
   SceneId,
@@ -8,6 +9,7 @@ import type {
   VerificationReport,
   VerifyConfig,
   VideoAsset,
+  VideoSource,
 } from './types';
 import { analyzeVideo, disposeOcr } from './lib/analyze';
 import { loadReferenceImage } from './lib/image';
@@ -49,14 +51,15 @@ export default function App() {
 
   const [strictness, setStrictness] = useState<Strictness>('balanced');
   const [coverage, setCoverage] = useState(0.6);
-  const [sampleCount, setSampleCount] = useState(9);
+  const [sampleCount, setSampleCount] = useState(12);
   const [labelCritical, setLabelCritical] = useState(true);
 
-  const [source, setSource] = useState<'generate' | 'import'>('import');
+  const [source, setSource] = useState<ClipSource>('cloud');
   const [video, setVideo] = useState<VideoAsset | null>(null);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [analysis, setAnalysis] = useState<AnalysisState>({ status: 'idle', progress: 0 });
+  const [autoVerify, setAutoVerify] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -132,7 +135,7 @@ export default function App() {
     });
   };
 
-  const handleImport = async (file: File) => {
+  const handleImport = async (file: File, origin: 'imported' | 'cloud' = 'imported') => {
     setVideoError(null);
     const rejection = describeUnsupportedFile(file);
     if (rejection) {
@@ -146,13 +149,14 @@ export default function App() {
       setVideo({
         url,
         name: file.name,
-        source: 'imported',
+        source: origin,
         duration: probe.duration,
         size: file.size,
         width: probe.width,
         height: probe.height,
       });
       setAnalysis({ status: 'idle', progress: 0 });
+      setAutoVerify(Boolean(brand.trim()));
     } catch (error) {
       URL.revokeObjectURL(url);
       setVideoError(error instanceof Error ? error.message : 'This clip could not be read.');
@@ -161,7 +165,11 @@ export default function App() {
     }
   };
 
-  const handleGenerated = async (blob: Blob, filename: string) => {
+  const handleGenerated = async (
+    blob: Blob,
+    filename: string,
+    origin: VideoSource = 'generated',
+  ) => {
     setVideoError(null);
     const url = URL.createObjectURL(blob);
     const file = new File([blob], filename || 'comfy-clip.mp4', {
@@ -172,17 +180,18 @@ export default function App() {
       setVideo({
         url,
         name: filename || 'comfy-clip.mp4',
-        source: 'generated',
+        source: origin,
         duration: probe.duration,
         size: blob.size,
         width: probe.width,
         height: probe.height,
       });
       setAnalysis({ status: 'idle', progress: 0 });
+      setAutoVerify(Boolean(brand.trim()));
     } catch (error) {
       URL.revokeObjectURL(url);
       setVideoError(
-        `ComfyUI produced a file this browser cannot decode. Export an MP4 (H.264) from your workflow. ${
+        `${origin === 'cloud' ? 'Comfy Cloud' : 'ComfyUI'} produced a file this browser cannot decode. Export an MP4 (H.264) from your workflow. ${
           error instanceof Error ? error.message : ''
         }`.trim(),
       );
@@ -246,6 +255,34 @@ export default function App() {
     void runVerification(rect);
   };
 
+  // Auto-verify the actual returned/generated MP4 once its player is ready.
+  useEffect(() => {
+    if (!autoVerify || !video) return undefined;
+    const element = videoRef.current;
+    if (!element) return undefined;
+
+    let cancelled = false;
+    const trigger = () => {
+      if (cancelled) return;
+      setAutoVerify(false);
+      void runVerification();
+    };
+
+    if (element.readyState >= 1) {
+      const timer = window.setTimeout(trigger, 0);
+      return () => {
+        cancelled = true;
+        window.clearTimeout(timer);
+      };
+    }
+
+    element.addEventListener('loadedmetadata', trigger, { once: true });
+    return () => {
+      cancelled = true;
+      element.removeEventListener('loadedmetadata', trigger);
+    };
+  }, [autoVerify, video]);
+
   const report: VerificationReport | null = analysis.report ?? null;
 
   const missing = useMemo(() => {
@@ -285,9 +322,10 @@ export default function App() {
     setPromptDirty(false);
     setStrictness('balanced');
     setCoverage(0.6);
-    setSampleCount(9);
+    setSampleCount(12);
     setLabelCritical(true);
-    setSource('import');
+    setSource('cloud');
+    setAutoVerify(false);
     setVideo(null);
     setVideoError(null);
     setAnalysis({ status: 'idle', progress: 0 });
@@ -324,7 +362,7 @@ export default function App() {
         <section className="hero">
           <div className="hero__copy">
             <p className="eyebrow">
-              <span className="live-dot" aria-hidden="true" /> Hackathon build · browser OCR · no keys
+              <span className="live-dot" aria-hidden="true" /> Hackathon build · browser OCR · key stays server-side
             </p>
             <h1>
               Prove the product
@@ -332,8 +370,9 @@ export default function App() {
               <span>survived the render.</span>
             </h1>
             <p className="hero__lede">
-              Upload the pack shot, generate or import an AI ad, then let Tesseract read the label in sampled frames.
-              You get word-level boxes, a PASS / REVIEW / FAIL verdict and a JSON report you can defend.
+              Upload the pack shot, set the exact label, and generate with the bundled LTX-2.3 workflow on Comfy Cloud.
+              BrandProof pulls the returned MP4 back automatically, then Tesseract reads the label in sampled frames,
+              with word-level boxes, a PASS / REVIEW / FAIL verdict and a JSON report you can defend.
             </p>
           </div>
           <ol className="steps" aria-label="Workflow progress">
@@ -396,13 +435,17 @@ export default function App() {
           importing={importing}
           product={product}
           prompt={prompt}
+          brand={brand}
           onImport={(file) => void handleImport(file)}
+          onCloudImport={(file) => void handleImport(file, 'cloud')}
+          onCloudGenerated={(blob, filename) => void handleGenerated(blob, filename, 'cloud')}
           onClearVideo={() => {
             setVideo(null);
+            setAutoVerify(false);
             setAnalysis({ status: 'idle', progress: 0 });
           }}
           onClearError={() => setVideoError(null)}
-          onGenerated={(blob, filename) => void handleGenerated(blob, filename)}
+          onGenerated={(blob, filename) => void handleGenerated(blob, filename, 'generated')}
           onDurationChange={(duration) => {
             setVideo((previous) =>
               previous && Math.abs(previous.duration - duration) > 0.05 ? { ...previous, duration } : previous,
@@ -443,12 +486,12 @@ export default function App() {
           </div>
           <div className="footer__meta">
             <Pill tone="neutral">Tesseract.js OCR</Pill>
-            <Pill tone="neutral">ComfyUI API</Pill>
+            <Pill tone="neutral">Comfy Cloud API v2</Pill>
             <Pill tone="neutral">MIT licensed</Pill>
           </div>
           <p className="micro footer__note">
-            Every clip, photo and OCR result is processed locally in this tab, except a ComfyUI generation you trigger
-            yourself. Verdicts are evidence, not a guarantee.
+            Photos, clips, frames and OCR stay in this tab. Comfy Cloud generation runs through BrandProof&apos;s
+            server-side proxy with the key held in the Worker. Verdicts are evidence, not a guarantee.
           </p>
         </footer>
       </main>

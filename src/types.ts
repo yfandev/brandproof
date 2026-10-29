@@ -8,9 +8,34 @@ export type CheckStatus = 'pass' | 'review' | 'fail' | 'skipped';
 
 export type TokenStatus = 'match' | 'near' | 'missing' | 'unreadable';
 
+/** How a whole token behaved across the sampled frames, after all OCR passes. */
+export type TokenFinding =
+  | 'verified'
+  | 'detected'
+  | 'visibly-distorted'
+  | 'not-detected'
+  | 'unreadable'
+  | 'insufficient-evidence';
+
+export type OcrVariant = 'original' | 'grayscale' | 'contrast' | 'threshold' | 'threshold-inverted';
+
+export type OcrRegionSource = 'manual' | 'auto' | 'full-frame';
+
+export interface OcrPassInfo {
+  id: string;
+  label: string;
+  psm: number;
+  variant: OcrVariant;
+  wordCount: number;
+  confidence: number;
+  error?: string;
+}
+
 export type FrameStatus = 'pass' | 'review' | 'fail' | 'unreadable';
 
-export type VideoSource = 'imported' | 'generated';
+export type ClipSource = 'cloud' | 'local' | 'import';
+
+export type VideoSource = 'imported' | 'generated' | 'cloud';
 
 export interface Bbox {
   x0: number;
@@ -58,6 +83,9 @@ export interface FrameSample {
   label: TokenMatch[];
   status: FrameStatus;
   notes: string[];
+  ocrPasses?: OcrPassInfo[];
+  ocrRegion?: Rect | null;
+  ocrRegionSource?: OcrRegionSource;
 }
 
 export interface VerifyConfig {
@@ -110,6 +138,24 @@ export interface TokenEvidence {
   unreadable: number;
   bestReading: string | null;
   bestSimilarity: number;
+  bestConfidence: number | null;
+  finding: TokenFinding;
+}
+
+export interface ReportDiagnostics {
+  capture: {
+    width: number;
+    height: number;
+    requestedFrames: number;
+    capturedFrames: number;
+  };
+  ocr: {
+    engine: string;
+    passesPerFrame: number[];
+    totalPasses: number;
+    totalWords: number;
+    regionSources: OcrRegionSource[];
+  };
 }
 
 export interface VerificationReport {
@@ -130,6 +176,7 @@ export interface VerificationReport {
   tokenEvidence: TokenEvidence[];
   frames: FrameSample[];
   limitations: string[];
+  diagnostics?: ReportDiagnostics;
 }
 
 export interface ReferenceAsset {

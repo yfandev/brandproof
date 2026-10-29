@@ -1,4 +1,4 @@
-import type { Rect, VerificationReport } from '../types';
+import type { Rect, VerificationReport, VideoSource } from '../types';
 import { paletteFromCanvas, comparePalettes, cropNormalized } from './image';
 import { captureFrames } from './frames';
 import { disposeOcr, OcrError, recognizeCanvas } from './ocr';
@@ -18,7 +18,7 @@ export interface AnalyzeOptions {
   video: HTMLVideoElement;
   config: import('../types').VerifyConfig;
   reference: { canvas: HTMLCanvasElement } | null;
-  videoMeta: { name: string; source: 'imported' | 'generated'; duration: number };
+  videoMeta: { name: string; source: VideoSource; duration: number };
   onProgress?: (progress: AnalyzeProgress) => void;
 }
 
@@ -71,6 +71,8 @@ export async function analyzeVideo(options: AnalyzeOptions): Promise<Verificatio
 
       const ocr = await recognizeCanvas(frame.canvas, {
         region,
+        autoRegion: true,
+        focusTokens: reportConfig.brandTokens,
         onProgress: (value) => {
           onProgress?.({
             stage: 'ocr',
@@ -119,6 +121,9 @@ export async function analyzeVideo(options: AnalyzeOptions): Promise<Verificatio
         brandTokens: reportConfig.brandTokens,
         labelTokens: reportConfig.labelTokens,
         region,
+        ocrPasses: ocr.passes,
+        ocrRegion: ocr.region,
+        ocrRegionSource: ocr.regionSource,
       });
       frameSamples.push(sample);
     }
@@ -147,6 +152,26 @@ export async function analyzeVideo(options: AnalyzeOptions): Promise<Verificatio
     minWordConfidence: reportConfig.minWordConfidence,
     referenceSimilarity,
   });
+
+  const passesPerFrame = frameSamples.map((frame) => frame.ocrPasses?.length ?? 0);
+  const regionSources = Array.from(
+    new Set(frameSamples.map((frame) => frame.ocrRegionSource ?? 'full-frame')),
+  );
+  report.diagnostics = {
+    capture: {
+      width: frames[0]?.width ?? 0,
+      height: frames[0]?.height ?? 0,
+      requestedFrames: total,
+      capturedFrames: frames.length,
+    },
+    ocr: {
+      engine: 'Tesseract.js 7 (LSTM)',
+      passesPerFrame,
+      totalPasses: passesPerFrame.reduce((sum, count) => sum + count, 0),
+      totalWords: frameSamples.reduce((sum, frame) => sum + frame.words.length, 0),
+      regionSources,
+    },
+  };
 
   if (report.frames.length !== total) {
     // Defensive: sampling always returns the requested count, but keep the report honest.

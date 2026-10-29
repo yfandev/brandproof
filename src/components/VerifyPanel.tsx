@@ -113,8 +113,8 @@ export function VerifyPanel({
                 disabled={running}
               >
                 <option value={6}>6 frames · fastest</option>
-                <option value={9}>9 frames · balanced</option>
-                <option value={12}>12 frames · thorough</option>
+                <option value={12}>12 frames · balanced</option>
+                <option value={18}>18 frames · thorough</option>
               </select>
             </label>
 
@@ -151,7 +151,8 @@ export function VerifyPanel({
           <p className="micro">
             Strictness sets the token similarity threshold to {Math.round(thresholdFor(strictness) * 100)}% with a
             matching minimum OCR word confidence. Coverage is the share of readable frames that must contain the expected
-            text. Unreadable frames are never counted as mismatches.
+            text. Unreadable frames are never counted as mismatches. Verification runs a full-frame pass plus an
+            automatic or manual label crop with grayscale, contrast and adaptive-threshold OCR variants.
           </p>
         </div>
 

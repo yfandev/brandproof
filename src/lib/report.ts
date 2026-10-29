@@ -18,6 +18,9 @@ export function reportToJson(report: VerificationReport): string {
       brand: frame.brand,
       label: frame.label,
       words: frame.words,
+      ocrPasses: frame.ocrPasses,
+      ocrRegion: frame.ocrRegion,
+      ocrRegionSource: frame.ocrRegionSource,
     })),
   };
   return `${JSON.stringify(serialisable, null, 2)}\n`;

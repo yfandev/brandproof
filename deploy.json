@@ -6,6 +6,11 @@
       "name": "worker.js",
       "type": "esm",
       "path": "./worker/index.js"
+    },
+    {
+      "name": "comfy-cloud.js",
+      "type": "esm",
+      "path": "./worker/comfy-cloud.js"
     }
   ],
   "assetsDirectory": "./dist",

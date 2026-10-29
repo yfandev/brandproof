@@ -9,3 +9,6 @@ coverage
 .env.*
 !.env.example
 .dev-server.pid
+/freebuff-sites-build/
+
+.secrets/
