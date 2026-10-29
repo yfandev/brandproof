@@ -519,6 +519,7 @@ Without the secret the UI still loads and the ledger still works, but **Start ca
 - **NOT DETECTED is not a mismatch.** An OCR miss produces REVIEW (or `insufficient-evidence`), not FAIL. FAIL for label text requires repeated near-readings that look like visible distortion, not silence.
 - **Sampling is discrete.** Incorrect text that appears only between sampled frames can be missed. Raise sample count for fast cuts.
 - **Text only, plus a colour heuristic.** There is no logo-shape matching, structural comparison or audio analysis. Palette overlap is a coarse 4×4×4 RGB histogram intersection, not identity.
+- **Media loading has a fallback, not a guarantee.** Verification opens the downloaded clip from memory first; if the browser stalls at `readyState 0` (a blob can queue behind other downloads), the same bytes are reopened from the same-origin Worker stream at `/api/comfy/jobs/<id>/video`. If neither loads, the report names both failures with byte size, MIME type and container instead of a bare timeout.
 - **One product per verification in Studio.** v2's catalog pilot verifies up to 8 products, but each against its own photo and its own clip — never as one shared frame set. Multiple labels on one pack, multi-language packs and full-frame reading can produce noisy OCR; use the label region.
 - **Region OCR assumes stable framing.** A moving label invalidates the fixed rectangle.
 - **No server trust layer.** Reports are browser-generated and unsigned; anyone can edit a downloaded JSON.

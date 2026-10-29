@@ -383,7 +383,7 @@ export function CatalogPanel() {
             const video = await downloadCloudVideo(finished.id);
             return { blob: video.blob, filename: video.filename, jobId: finished.id };
           },
-          verify: async ({ blob, filename, product, job }) => {
+          verify: async ({ blob, filename, product, job, jobId }) => {
             const active = runRef.current;
             if (!active) throw new Error('The run was closed before verification started.');
             const report = await verifyGeneratedClip({
@@ -393,6 +393,9 @@ export function CatalogPanel() {
               brand: job.brand,
               labelText: job.labelText,
               config: active.config,
+              sourceUrl: jobId
+                ? `/api/comfy/jobs/${encodeURIComponent(jobId)}/video`
+                : null,
               onProgress: (progress) => {
                 setVerifyNote(`${job.name} · ${progress.message}`);
               },
@@ -473,10 +476,10 @@ export function CatalogPanel() {
             Products run concurrently, and every attempt reserves budget on the server before it starts.
           </p>
           <p className="cat__lede">
-            A <strong>FAIL</strong> or <strong>REVIEW</strong> is not the end: BrandProof rewrites that product&apos;s
-            prompt from the attempt&apos;s own evidence and generates again — up to{' '}
-            {settings?.retryLimit ?? MAX_ATTEMPTS_PER_PRODUCT} attempts, then{' '}
-            <strong>Needs human review</strong>. REVIEW never counts as approval.
+            The goal is a clip that is <em>proven</em>, not a verdict to hand off. A <strong>FAIL</strong> or{' '}
+            <strong>REVIEW</strong> sends the product straight back through generation with its prompt rewritten from
+            that attempt&apos;s own OCR evidence, so BrandProof keeps working until the label is actually verified — up to{' '}
+            {settings?.retryLimit ?? MAX_ATTEMPTS_PER_PRODUCT} attempts. REVIEW never counts as approval.
           </p>
           <details className="cat-notes">
             <summary>How the automatic retry loop works</summary>
@@ -490,9 +493,11 @@ export function CatalogPanel() {
                 regenerate with that revision appended to the prompt.
               </li>
               <li>
-                Stop at {settings?.retryLimit ?? MAX_ATTEMPTS_PER_PRODUCT} attempts, or earlier if the run budget cannot
-                cover another one, and mark the product for human review. Every attempt keeps its prompt, revision basis,
-                verdict, frame evidence, job id and reservation.
+                Keep iterating until a clip genuinely passes, for up to{' '}
+                {settings?.retryLimit ?? MAX_ATTEMPTS_PER_PRODUCT} attempts — or until the budget cannot cover another
+                one. Only when the attempt limit is exhausted is the product surfaced with all of its evidence; that is
+                the fallback, not the objective. Every attempt keeps its prompt, revision basis, verdict, frame
+                evidence, job id and reservation.
               </li>
             </ol>
           </details>
