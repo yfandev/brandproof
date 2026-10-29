@@ -424,6 +424,32 @@ export function CatalogPanel() {
             uses. Products run concurrently up to the concurrency limit; every attempt reserves budget on the server
             before it starts.
           </p>
+          <p className="cat__lede">
+            Failing products are retried automatically. When an attempt comes back <strong>FAIL</strong> or{' '}
+            <strong>REVIEW</strong>, BrandProof reads that attempt&apos;s own OCR evidence, rewrites the prompt to target
+            what the evidence actually showed, and regenerates the clip — up to{' '}
+            {settings?.retryLimit ?? MAX_ATTEMPTS_PER_PRODUCT} total attempts per product. A product that still has no
+            genuine PASS after the last attempt is marked <strong>Needs human review</strong>; REVIEW never counts as
+            approval.
+          </p>
+          <details className="cat-notes">
+            <summary>How the automatic retry loop works</summary>
+            <ol>
+              <li>Generate a clip for the product with the bundled LTX-2.3 workflow on Comfy Cloud.</li>
+              <li>Verify the returned MP4 with the studio&apos;s OCR pipeline and record each attempt&apos;s verdict and token evidence.</li>
+              <li>
+                On a genuine PASS the product is approved and never regenerated. On FAIL or REVIEW, build a revision from
+                the recorded findings — text not detected → front-facing, larger, slower camera; lettering visibly
+                distorted → rigid packaging, locked-off camera; label unreadable → closer, unobstructed, evenly lit — and
+                regenerate with that revision appended to the prompt.
+              </li>
+              <li>
+                Stop at {settings?.retryLimit ?? MAX_ATTEMPTS_PER_PRODUCT} attempts, or earlier if the run budget cannot
+                cover another one, and mark the product for human review. Every attempt keeps its prompt, revision basis,
+                verdict, frame evidence, job id and reservation.
+              </li>
+            </ol>
+          </details>
           <p className="micro">
             BrandProof checks visible label text only. It does not verify product shape, ingredients, legal claims or
             overall authenticity. Comfy Cloud does not report per-job credit usage, so every credit figure is a planning
@@ -680,7 +706,9 @@ export function CatalogPanel() {
               </dl>
               <p className="micro">
                 Every attempt reserves budget on the server before generation, so concurrent products cannot spend the
-                same credits. REVIEW is never approval, and a product stops after {settings?.retryLimit ?? 3} attempts.
+                same credits. A product that comes back FAIL or REVIEW is regenerated automatically with a prompt
+                revision built from that attempt&apos;s OCR evidence, up to {settings?.retryLimit ?? 3} total attempts,
+                then marked for human review. REVIEW is never approval.
               </p>
               <div className="cat-confirm__actions">
                 <button type="button" className="btn btn--ghost" onClick={() => setConfirming(false)}>
