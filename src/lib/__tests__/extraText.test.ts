@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { FrameSample, OcrWord, VerificationReport, VerifyConfig } from '../../types';
-import { findExtraneousReadings, normalizeText } from '../text';
+import type { Bbox, FrameSample, OcrWord, VerificationReport, VerifyConfig } from '../../types';
+import { findExtraneousReadings, isLeadingEdgeRead, normalizeText } from '../text';
 import { buildReport, evaluateFrame, reportInputs } from '../verdict';
 
 const config: VerifyConfig = {
@@ -14,17 +14,21 @@ const config: VerifyConfig = {
   region: null,
 };
 
+function bboxAt(index: number): Bbox {
+  return {
+    x0: 0.1 + index * 0.1,
+    y0: 0.4,
+    x1: 0.1 + index * 0.1 + 0.08,
+    y1: 0.46,
+  };
+}
+
 function makeWords(texts: string[], confidence = 94): OcrWord[] {
   return texts.map((text, index) => ({
     text,
     normalized: normalizeText(text),
     confidence,
-    bbox: {
-      x0: 0.1 + index * 0.1,
-      y0: 0.4,
-      x1: 0.1 + index * 0.1 + 0.08,
-      y1: 0.46,
-    },
+    bbox: bboxAt(index),
   }));
 }
 
@@ -50,15 +54,19 @@ function makeFrames(texts: string[][]): FrameSample[] {
   );
 }
 
-function makeReport(texts: string[][]): VerificationReport {
+function makeReportFromFrames(frames: FrameSample[]): VerificationReport {
   const inputs = reportInputs(config);
   return buildReport({
     config,
-    frames: makeFrames(texts),
+    frames,
     video: { name: 'clip.mp4', source: 'imported', duration: 4 },
     ...inputs,
     referenceSimilarity: 0.6,
   });
+}
+
+function makeReport(texts: string[][]): VerificationReport {
+  return makeReportFromFrames(makeFrames(texts));
 }
 
 const cleanFrame = ['BOTANIKA', 'HYDRATING', 'MOISTURIZER'];
@@ -88,6 +96,15 @@ describe('findExtraneousReadings', () => {
     expect(readings).toEqual([]);
   });
 
+  it('ignores a clipped leading-edge read of the same word', () => {
+    const readings = findExtraneousReadings(
+      makeWords(['BOTANIKA', 'TANIKA', 'UTANIKA', 'SOTANIKA']),
+      expected,
+      60,
+    );
+    expect(readings).toEqual([]);
+  });
+
   it('ignores low-confidence reads', () => {
     const readings = findExtraneousReadings(makeWords(['BOTANKA'], 20), expected, 60);
     expect(readings).toEqual([]);
@@ -95,6 +112,21 @@ describe('findExtraneousReadings', () => {
 
   it('does nothing when no expected token is long enough to compare', () => {
     expect(findExtraneousReadings(makeWords(['BOTANKA']), ['ml'], 60)).toEqual([]);
+  });
+});
+
+describe('isLeadingEdgeRead', () => {
+  it('treats a lost or garbled start of the word as a partial read', () => {
+    expect(isLeadingEdgeRead('botanika', 'tanika')).toBe(true);
+    expect(isLeadingEdgeRead('botanika', 'utanika')).toBe(true);
+    expect(isLeadingEdgeRead('botanika', 'sotanika')).toBe(true);
+    expect(isLeadingEdgeRead('botanika', 'jotanika')).toBe(true);
+  });
+
+  it('does not excuse a change inside the word', () => {
+    expect(isLeadingEdgeRead('botanika', 'botanka')).toBe(false);
+    expect(isLeadingEdgeRead('aurelia', 'aurelio')).toBe(false);
+    expect(isLeadingEdgeRead('botanika', 'botaniko')).toBe(false);
   });
 });
 
@@ -120,6 +152,46 @@ describe('duplicated lettering in the verdict', () => {
     const report = makeReport(frames);
     expect(report.checks.find((check) => check.id === 'extra-text')?.status).toBe('review');
     expect(report.verdict).toBe('REVIEW');
+  });
+
+  it('does not treat two OCR passes over the same box as a second copy', () => {
+    const shared = { x0: 0.2, y0: 0.4, x1: 0.6, y1: 0.5 };
+    const inputs = reportInputs(config);
+    const words: OcrWord[] = [
+      { text: 'BOTANIKA', normalized: 'botanika', confidence: 94, bbox: shared },
+      { text: 'BOTANKA', normalized: 'botanka', confidence: 71, bbox: shared },
+      { text: 'HYDRATING', normalized: 'hydrating', confidence: 92, bbox: { x0: 0.2, y0: 0.6, x1: 0.5, y1: 0.65 } },
+      { text: 'MOISTURIZER', normalized: 'moisturizer', confidence: 92, bbox: { x0: 0.2, y0: 0.7, x1: 0.5, y1: 0.75 } },
+    ];
+    const frame = evaluateFrame({
+      index: 0,
+      time: 0,
+      dataUrl: '',
+      width: 1280,
+      height: 720,
+      paletteSimilarity: 0.6,
+      rawWords: words,
+      text: words.map((word) => word.text).join(' '),
+      config,
+      threshold: inputs.threshold,
+      minWordConfidence: inputs.minWordConfidence,
+      brandTokens: inputs.brandTokens,
+      labelTokens: inputs.labelTokens,
+      region: null,
+    });
+    expect(frame.extraText).toEqual([]);
+    const report = makeReportFromFrames(Array.from({ length: 9 }, () => frame));
+    expect(report.checks.find((check) => check.id === 'extra-text')?.status).toBe('pass');
+  });
+
+  it('reviews instead of failing when the brand is only read with its first letters clipped', () => {
+    const frames = Array.from({ length: 9 }, () => ['TANIKA', 'HYDRATING', 'MOISTURIZER']);
+    const report = makeReport(frames);
+    expect(report.verdict).toBe('REVIEW');
+    const brand = report.checks.find((check) => check.id === 'brand');
+    expect(brand?.status).toBe('review');
+    expect(brand?.detail).toContain('partially read');
+    expect(report.checks.find((check) => check.id === 'extra-text')?.status).toBe('pass');
   });
 
   it('records the extra reading on the frame that produced it', () => {

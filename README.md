@@ -249,6 +249,8 @@ A label line that is simply absent from otherwise readable text is **NOT DETECTE
 
 **Duplicated lettering fails.** Every unmatched word is compared with the required tokens. A word that is at least 80% similar to a required word, is not a fragment or contraction of it, and appears in the same frame as the correct word, counts as a near-copy — for example `BOTANKA` printed above a correct `BOTANIKA`. Two or more readable frames with such a near-copy fail the critical **No duplicated lettering** check, because the render invented a second, garbled copy of text that should appear once. A single frame produces REVIEW, never FAIL. The offending reading, its similarity, confidence and box are recorded on that frame and in the JSON report.
 
+Two guards keep that rule from inventing a mismatch. A look-alike only counts when it sits in a **different place** from the correct word — if a second OCR pass reads the same box differently (`BOTANIKA` in one pass, `BOTANKA` in another), that is one word, not a duplicate. And a word whose only difference is at its **start** (`TANIKA`, `UTANIKA`, `SOTANIKA` for `BOTANIKA`) is treated as a partially read word, because a clipped crop or a faint first glyph reads exactly that way; the brand check then reports *partially read* and the verdict is REVIEW, not FAIL.
+
 Palette overlap is **advisory**: it can turn a PASS into REVIEW evidence but never forces FAIL, because a new scene legitimately changes the colour distribution.
 
 ### 5. Manual label region
