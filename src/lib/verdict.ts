@@ -105,7 +105,7 @@ export function evaluateFrame(input: FrameInput): FrameSample {
     input.minWordConfidence,
   ).map((match) => ({
     ...match,
-    status: classifyMatch(match, input.threshold, legibility.legible),
+    status: classifyMatch(match, input.threshold, legibility.legible, input.minWordConfidence),
   }));
 
   const label: TokenMatch[] = matchTokens(
@@ -115,7 +115,7 @@ export function evaluateFrame(input: FrameInput): FrameSample {
     input.minWordConfidence,
   ).map((match) => ({
     ...match,
-    status: classifyMatch(match, input.threshold, legibility.legible),
+    status: classifyMatch(match, input.threshold, legibility.legible, input.minWordConfidence),
   }));
 
   // Words that are a close misspelling of required text. A render that prints the

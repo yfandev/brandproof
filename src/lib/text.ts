@@ -156,8 +156,13 @@ export function matchTokens(
   threshold: number,
   minWordConfidence: number,
 ): TokenMatch[] {
+  // Small printed text is read at low confidence even when the letters are
+  // plainly there. Matching still needs the configured confidence, but a weak
+  // reading is kept so a render that prints different letters ("HYCGANG" for
+  // "HYDRATING") is reported as a visible change instead of "nothing seen".
+  const weakFloor = Math.min(minWordConfidence, 25);
   const usable = candidates.filter(
-    (candidate) => candidate.confidence >= minWordConfidence && candidate.normalized.length > 0,
+    (candidate) => candidate.confidence >= weakFloor && candidate.normalized.length > 0,
   );
 
   return expectedTokens.map((expected) => {
@@ -178,14 +183,17 @@ export function matchTokens(
     // "BOTANIKA") used to be reported as an exact match. Joined or split
     // candidates still match because they contain the whole expected token.
     const wholeWord = best ? isWholeWordRead(expected, best.normalized) : false;
+    const confident = best ? best.confidence >= minWordConfidence : false;
     const status: TokenStatus =
-      bestScore >= threshold && wholeWord
+      bestScore >= threshold && wholeWord && confident
         ? 'match'
         : best && isLeadingEdgeRead(expected, best.normalized)
           ? 'unreadable'
-          : bestScore >= nearRatio(threshold)
-            ? 'near'
-            : 'missing';
+          : bestScore >= threshold && wholeWord
+            ? 'unreadable'
+            : bestScore >= nearRatio(threshold)
+              ? 'near'
+              : 'missing';
     return {
       expected,
       matched: best ? best.text : null,
@@ -227,10 +235,21 @@ export function isLeadingEdgeRead(expected: string, candidate: string): boolean 
   return candidate.endsWith(tail) && candidate.length - tail.length <= 3;
 }
 
-export function classifyMatch(match: TokenMatch, threshold: number, legible: boolean): TokenStatus {
+export function classifyMatch(
+  match: TokenMatch,
+  threshold: number,
+  legible: boolean,
+  minWordConfidence: number,
+): TokenStatus {
   if (!legible) return 'unreadable';
-  if (match.similarity >= threshold && isWholeWordRead(match.expected, normalizeText(match.matched ?? ''))) {
-    return 'match';
+  const confident = match.confidence !== null && match.confidence >= minWordConfidence;
+  if (
+    match.similarity >= threshold &&
+    isWholeWordRead(match.expected, normalizeText(match.matched ?? ''))
+  ) {
+    // A weak read is not a verified match, and it is not a visible change either:
+    // the letters are right but Tesseract was unsure of them.
+    return confident ? 'match' : 'unreadable';
   }
   if (match.matched && isLeadingEdgeRead(match.expected, normalizeText(match.matched))) {
     return 'unreadable';
