@@ -10,34 +10,42 @@ Built for the **Comfy Open Source × Higgsfield** hackathon. BrandProof runs a s
 
 ---
 
-## 👀 Read this first: two versions in this repository
+## 👋 Coming back to BrandProof? Start here
 
-This repository holds **two builds of BrandProof**. If you judged, reviewed or tried the app at Comfy Build Nights, you saw **v1 — Studio**. Everything in **v2 — Catalog Pilot Run** is new since that award.
+**The version you saw at Comfy Build Nights was v1 — Studio, and it won.** On **28 October 2026** in San Francisco that build placed in the **top three** of the Comfy Build Nights hackathon (the event's award list is unranked among the top three; the overall Comfy Open Source × Higgsfield hackathon is judged separately and no overall result is claimed here). One product photo in, one Comfy-generated ad out, one OCR fidelity report.
 
-|  | **v1 — Studio** (the build that was judged) | **v2 — Catalog Pilot Run** (new) |
+**This version goes further: v2 adds the Catalog Pilot Run.** Instead of one product at a time, you enter up to 8 products and BrandProof does the rest:
+
+- it generates a real LTX-2.3 clip for every product **concurrently** on Comfy Cloud, up to a configurable limit, so one slow product never holds up the others;
+- it verifies each returned MP4 with the same Tesseract.js OCR pipeline and the same PASS / REVIEW / FAIL rules — nothing is loosened for the catalog;
+- when a clip comes back **FAIL or REVIEW**, it reads that attempt's own OCR evidence, rewrites the prompt to target what the evidence actually showed, and generates a fresh clip — up to **3 attempts**, then the product is flagged for human review;
+- a live board tracks every product's attempts, verdict, frame evidence and spend, with run metrics, batch JSON and CSV export, and a **server-side budget ledger** that refuses a new generation when the run budget or the daily cap cannot cover it.
+
+**Nothing was removed or redefined.** v1 Studio is still the first thing you see in the app, the workflow and verdict rules below still describe it exactly, and the catalog calls the same generation and verification code — it adds scale and automatic retries, not a new definition of PASS. The Catalog Pilot Run is served by its own deployment so the awarded build stays exactly as it was demoed.
+
+### v1 → v2 at a glance
+
+|  | **v1 — Studio** (the awarded build) | **v2 — Catalog Pilot Run** (added here) |
 | --- | --- | --- |
-| Scope | One product, one verification | Up to 8 products in one catalog run |
+| Scope | One product, one verification | Up to 8 products in one run |
 | Generation | **Generate with Comfy Cloud** for the uploaded photo | Same LTX-2.3 workflow, one real job per product, **in parallel** |
 | Verification | Tesseract.js OCR → PASS / REVIEW / FAIL | Same pipeline and the same verdict rules, per product |
 | Retries | Manual — you press verify again | **Automatic**, max 3 attempts, each retry rewritten from that attempt's own OCR evidence |
 | Results | One evidence report + JSON | Live results board, run metrics, batch JSON and CSV export |
 | Spend controls | None | Server-side budget ledger in D1: per-run budget, concurrency limit, daily cap |
-| Branch | `main` — **frozen at the judged build** | `feature/catalog-pilot-parallel` — **not merged** |
 | Live URL | [site-ebd712779b3a4bf1879d40dc062c2b30](https://site-ebd712779b3a4bf1879d40dc062c2b30.freebuff.page) | [site-f6bf20b690ba408e8078305a9210b7a8](https://site-f6bf20b690ba408e8078305a9210b7a8.freebuff.page) |
 
-**Why the split:** v1 is exactly what was demoed and awarded on 28 October 2026, so `main` and its production deployment stay byte-identical to what the judges saw. The catalog feature is built, tested and deployed on its own branch and its own site; merging it into `main` is a separate decision that has not been taken. v2 changes no verification thresholds, no verdict rules and nothing about the single-product flow.
-
-Jump to: [v1 workflow](#the-product-workflow) · [how verification works](#how-verification-actually-works) · [v2 Catalog Pilot Run](#catalog-pilot-run-new-in-v2-feature-branch)
+Jump to: [v1 workflow](#the-product-workflow) · [how verification works](#how-verification-actually-works) · [v2 Catalog Pilot Run](#catalog-pilot-run-new-in-v2)
 
 ---
 
 ## ▶ Live demos
 
-### v1 — Studio (production, `main`)
+### v1 — Studio (the awarded build)
 
 # https://site-ebd712779b3a4bf1879d40dc062c2b30.freebuff.page
 
-That is the **Production** deployment of `main` — the awarded build, unchanged. The Comfy Cloud API key is bound as a server-side secret on that environment, so **Generate with Comfy Cloud** works for any visitor — no install, no local ComfyUI, no key and no account needed to try the app.
+That is the **Production** deployment of the build that was demoed at Comfy Build Nights, unchanged. The Comfy Cloud API key is bound as a server-side secret on that environment, so **Generate with Comfy Cloud** works for any visitor — no install, no local ComfyUI, no key and no account needed to try the app.
 
 ```text
 GET https://site-ebd712779b3a4bf1879d40dc062c2b30.freebuff.page/api/comfy/status
@@ -46,17 +54,17 @@ GET https://site-ebd712779b3a4bf1879d40dc062c2b30.freebuff.page/api/comfy/status
 
 A Preview deployment of the same build is also available at <https://site-0c21528a747244fda433b4bd55129eee.freebuff.page>.
 
-### v2 — Catalog Pilot Run (feature-branch preview)
+### v2 — Catalog Pilot Run (new)
 
 # https://site-f6bf20b690ba408e8078305a9210b7a8.freebuff.page
 
-A **separate site** built from `feature/catalog-pilot-parallel`, with its own Worker, its own D1 budget ledger and its own copy of the Comfy secret. Open it, choose **Catalog pilot**, add products and start a run — the Studio workflow is still in the same app. Details: [Catalog Pilot Run](#catalog-pilot-run-new-in-v2-feature-branch).
+Its **own deployment**, with its own Worker, its own D1 budget ledger and its own copy of the Comfy secret — kept separate so the awarded build above is never affected by it. Open it, choose **Catalog pilot**, add products and start a run; the Studio workflow is still in the same app. Details: [Catalog Pilot Run](#catalog-pilot-run-new-in-v2).
 
 ---
 
 ## 🏆 Top 3 — Comfy Build Nights, San Francisco, 28 October 2026
 
-> **This award belongs to v1 — Studio**, the single-product build documented in most of this file. The Catalog Pilot Run did not exist at the event and was not judged.
+> **This award belongs to v1 — Studio**, the single-product build documented in most of this file. The Catalog Pilot Run was added afterwards and was not part of that event.
 >
 > BrandProof placed in the **top three at the Comfy Build Nights** event held in San Francisco on **28 October 2026**. That event's award list is unranked among the top three, so no further placement is claimed.
 >
@@ -436,13 +444,13 @@ Tesseract.js downloads its WASM engine and the `eng` traineddata from the jsDeli
 
 ---
 
-## Catalog Pilot Run (new in v2, feature branch)
+## Catalog Pilot Run (new in v2)
 
-> **New since the Build Night award.** Everything above this line describes v1 — Studio, the build that was judged on 28 October 2026. This section is what was added afterwards; it was not part of the awarded build.
+> **Added after the Build Night award.** Everything above this line describes v1 — Studio, the build that was demoed and awarded on 28 October 2026. This section is the addition; it was not part of that event.
 >
-> Branch: `feature/catalog-pilot-parallel` · isolated preview: **https://site-f6bf20b690ba408e8078305a9210b7a8.freebuff.page**
+> Own deployment: **https://site-f6bf20b690ba408e8078305a9210b7a8.freebuff.page**
 
-A catalog run takes several products at once, generates a clip for each through the same bundled LTX-2.3 workflow on Comfy Cloud, and verifies every returned MP4 with the same OCR pipeline the studio uses. It is developed on its own branch and deployed to its own site, so neither `main` nor the production demo changes.
+A catalog run takes several products at once, generates a clip for each through the same bundled LTX-2.3 workflow on Comfy Cloud, and verifies every returned MP4 with the same OCR pipeline the studio uses. It runs as its own deployment, so the awarded Studio demo is untouched.
 
 ### What a run does
 
@@ -509,7 +517,7 @@ Without the secret the UI still loads and the ledger still works, but **Start ca
 
 ## Publish the live app for free
 
-The submission build is already live at <https://site-ebd712779b3a4bf1879d40dc062c2b30.freebuff.page> (Production, `main`, key bound). The steps below reproduce that deployment from scratch.
+The submission build is already live at <https://site-ebd712779b3a4bf1879d40dc062c2b30.freebuff.page> (Production, key bound). The steps below reproduce that deployment from scratch.
 
 BrandProof deploys as static `dist/` assets plus a Worker that serves `/api/comfy/*` and the SPA. Direct generation only works when the Worker and the `COMFY_API_KEY` secret are deployed together.
 
@@ -552,7 +560,7 @@ A static host serves the UI, import and verification, but not the Comfy proxy. P
 
 ## Repository, contributing and license
 
-- **Repository:** https://github.com/yfandev/brandproof (branch `main`)
+- **Repository:** https://github.com/yfandev/brandproof
 - **Clone:** `git clone https://github.com/yfandev/brandproof.git`
 
 The repository is ready to publish as-is: [MIT license](LICENSE), no secrets, no committed API keys, no committed build output (`dist/`, `freebuff-sites-build/` are git-ignored) and no generated video assets.
