@@ -37,6 +37,52 @@ describe('bundled LTX-2.3 workflow', () => {
     expect(api[(saveInput as [string, number])[0]]).toBeDefined();
   });
 
+  it('flattens conditional widget groups into the API input names', () => {
+    const result = parseWorkflowJson(DEFAULT_WORKFLOW_TEXT);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const api = JSON.parse(result.parsed.apiWorkflowText) as Record<
+      string,
+      { class_type: string; inputs: Record<string, unknown> }
+    >;
+    for (const [id, node] of Object.entries(api)) {
+      expect({ id, dotted: Object.keys(node.inputs).filter((key) => key.includes('.')) }).toEqual({
+        id,
+        dotted: [],
+      });
+    }
+
+    const resizers = Object.values(api).filter(
+      (node) => node.class_type === 'ResizeImageMaskNode',
+    );
+    expect(resizers.length).toBeGreaterThan(0);
+    for (const node of resizers) {
+      if (node.inputs.resize_type === 'scale dimensions') {
+        expect(node.inputs).toHaveProperty('crop');
+        expect(node.inputs).toHaveProperty('width');
+        expect(node.inputs).toHaveProperty('height');
+      }
+      if (node.inputs.resize_type === 'scale longer dimension') {
+        expect(node.inputs).toHaveProperty('longer_size');
+      }
+    }
+
+    const enhancer = Object.values(api).find(
+      (node) => node.class_type === 'TextGenerateLTX2Prompt',
+    );
+    expect(enhancer?.inputs).toMatchObject({
+      sampling_mode: 'on',
+      temperature: 0.7,
+      top_k: 64,
+      top_p: 0.95,
+      min_p: 0.05,
+      repetition_penalty: 1.05,
+      seed: 0,
+      presence_penalty: 0,
+    });
+  });
+
   it('binds the product photo, prompt and negative prompt on the server', () => {
     const result = parseWorkflowJson(DEFAULT_WORKFLOW_TEXT);
     expect(result.ok).toBe(true);

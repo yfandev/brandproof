@@ -109,11 +109,31 @@ function nodeTitle(node: UiNode): string | undefined {
   return typeof node.title === 'string' && node.title.trim() ? node.title : undefined;
 }
 
+function flatInputName(name: string): string {
+  const dot = name.lastIndexOf('.');
+  return dot === -1 ? name : name.slice(dot + 1);
+}
+
 function baseInputs(node: UiNode): Record<string, unknown> {
   const inputs = namedValues(node);
   delete inputs.upload;
+  // Comfy's UI uses dotted keys for conditional widget groups (for example
+  // resize_type.crop and sampling_mode.min_p). The API graph expects the
+  // field without the group prefix.
   for (const key of Object.keys(inputs)) {
-    if (key.includes('.')) delete inputs[key];
+    if (!key.includes('.')) continue;
+    const flat = flatInputName(key);
+    if (!flat) {
+      delete inputs[key];
+      continue;
+    }
+    if (flat in inputs && inputs[flat] !== inputs[key]) {
+      throw new Error(
+        `Node ${node.id} has conflicting widget values for "${flat}" (${key}).`,
+      );
+    }
+    if (!(flat in inputs)) inputs[flat] = inputs[key];
+    delete inputs[key];
   }
   if (node.type === 'LoadImage') {
     const image = inputs.image ?? (Array.isArray(node.widgets_values) ? node.widgets_values[0] : undefined);
@@ -272,7 +292,7 @@ export function convertUiWorkflow(raw: unknown): UiConversionResult {
           if (input.link == null || !input.name) continue;
           const link = linkById.get(input.link);
           if (!link) continue;
-          api.inputs[input.name] = resolveInternal(link.origin_id, link.origin_slot);
+          api.inputs[flatInputName(input.name)] = resolveInternal(link.origin_id, link.origin_slot);
         }
         workflow[`${prefix}${internal.id}`] = api;
       }
@@ -300,19 +320,16 @@ export function convertUiWorkflow(raw: unknown): UiConversionResult {
       if (input.link == null || !input.name) continue;
       const link = topLinks.find((candidate) => candidate.id === input.link);
       if (!link) continue;
-      api.inputs[input.name] = resolveTop(link.origin_id, link.origin_slot);
+      api.inputs[flatInputName(input.name)] = resolveTop(link.origin_id, link.origin_slot);
     }
     workflow[String(node.id)] = api;
   }
 
-  for (const [id, node] of Object.entries(workflow)) {
+  for (const node of Object.values(workflow)) {
     if (!/CLIPTextEncode/i.test(node.class_type)) continue;
     if (typeof node.inputs.text !== 'string') continue;
-    if (NEGATIVE_TEXT.test(node.inputs.text)) {
-      if (!/neg/i.test(node._meta?.title ?? '')) {
-        node._meta = { ...node._meta, title: 'Negative prompt' };
-      }
-      warnings.push(`Node ${id} was identified as the negative prompt from its default text.`);
+    if (NEGATIVE_TEXT.test(node.inputs.text) && !/neg/i.test(node._meta?.title ?? '')) {
+      node._meta = { ...node._meta, title: 'Negative prompt' };
     }
   }
 

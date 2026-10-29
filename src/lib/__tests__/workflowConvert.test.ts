@@ -59,7 +59,13 @@ function uiWorkflow() {
               id: 12,
               type: 'ResizeImageMaskNode',
               inputs: [{ name: 'image', link: 202 }],
-              widgets_values_named: { width: 768, height: 1152 },
+              widgets_values_named: {
+                resize_type: 'scale dimensions',
+                'resize_type.width': 768,
+                'resize_type.height': 1152,
+                'resize_type.crop': 'center',
+                scale_method: 'lanczos',
+              },
             },
             {
               id: 13,
@@ -87,10 +93,15 @@ describe('UI workflow conversion', () => {
     expect(converted.workflow['2'].class_type).toBe('SaveVideo');
     expect(converted.workflow['2'].inputs.video).toEqual(['sg3_13', 0]);
     expect(converted.workflow['sg3_12'].inputs.image).toEqual(['1', 0]);
+    expect(converted.workflow['sg3_12'].inputs).toMatchObject({
+      width: 768,
+      height: 1152,
+      crop: 'center',
+    });
     expect(converted.workflow['sg3_13'].inputs.images).toEqual(['sg3_12', 0]);
     expect(converted.workflow['sg3_10'].inputs.text).toBe('A tube of cream');
     expect(converted.workflow['sg3_11']._meta?.title).toBe('Negative prompt');
-    expect(converted.warnings.join(' ')).toContain('negative prompt');
+    expect(converted.warnings).toHaveLength(0);
   });
 
   it('converts the UI workflow through the public parser', () => {
