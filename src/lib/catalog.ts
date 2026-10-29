@@ -14,7 +14,10 @@ import { buildPrompt } from './scenes';
 export const MAX_ATTEMPTS_PER_PRODUCT = 3;
 export const DEFAULT_CONCURRENCY = 3;
 export const MAX_CONCURRENCY = 4;
-export const DEFAULT_BUDGET_CREDITS = 12;
+// Sized for a demo session: one attempt is ~1.15 credits, a product can use three.
+// 60 credits covers a five-product run with retries and enough left for a second
+// run, so a judge does not hit a planning limit mid-demo.
+export const DEFAULT_BUDGET_CREDITS = 60;
 export const DEFAULT_ESTIMATE_CREDITS = 1;
 export const MAX_PRODUCTS = 8;
 

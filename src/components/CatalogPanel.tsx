@@ -753,7 +753,7 @@ export function CatalogPanel() {
                   className="input"
                   type="number"
                   min={1}
-                  max={settings?.maxBudgetCredits ?? 40}
+                  max={settings?.maxBudgetCredits ?? 400}
                   step={0.5}
                   value={config.budgetCredits}
                   disabled={busy}

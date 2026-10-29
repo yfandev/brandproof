@@ -486,7 +486,7 @@ A catalog run takes several products at once, generates a clip for each through 
 ### Budget model and what is actually enforced
 
 - Comfy Cloud API v2 does **not** report per-job credit usage, so the app never claims provider billing. Each attempt is charged against the run budget at a configurable planning rate (`CATALOG_ESTIMATE_CREDITS_PER_ATTEMPT`, default 1 credit) plus a 15% safety margin — 1.15 credits per attempt by default. Every figure in the UI and exports is labelled **estimate**.
-- Run budget and the deployment-wide daily cap (`CATALOG_DAILY_CREDIT_CAP`, default 30 credits) are enforced **server-side** in D1, so they hold across Worker isolates and across browser tabs. A denied attempt returns `budget-limited` and starts no generation.
+- Run budget and the deployment-wide daily cap (`CATALOG_DAILY_CREDIT_CAP`, default 150 credits) are enforced **server-side** in D1, so they hold across Worker isolates and across browser tabs. A denied attempt returns `budget-limited` and starts no generation. The default run budget is 60 credits and the per-run ceiling is 400, which covers a demo session (one attempt is about 1.15 credits, up to three per product).
 - Reserving is idempotent per attempt id, so a retried HTTP call cannot double-charge.
 - **Concurrency is limited by the browser tab**, not by the Worker: the Worker grants spend, the client decides how many products are in flight. A Durable Object would be needed for server-side concurrency; the platform's managed deploy does not support custom Durable Objects, so this is stated rather than faked.
 - OCR runs through a single Tesseract worker, so verification of concurrent products is queued behind one engine while generation stays parallel.
