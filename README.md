@@ -10,6 +10,21 @@ Built for the **Comfy Open Source × Higgsfield** hackathon. BrandProof runs a s
 
 ---
 
+## ▶ Live demo
+
+# https://site-ebd712779b3a4bf1879d40dc062c2b30.freebuff.page
+
+That is the **Production** deployment of this repository's `main` branch, hosted on Freebuff Sites. The Comfy Cloud API key is bound as a server-side secret on that environment, so **Generate with Comfy Cloud** works for any visitor — no install, no local ComfyUI, no key and no account needed to try the app.
+
+```text
+GET https://site-ebd712779b3a4bf1879d40dc062c2b30.freebuff.page/api/comfy/status
+→ {"configured":true,"provider":"Comfy Cloud","api":"v2","workflowRequired":true}
+```
+
+A Preview deployment of the same build is also available at <https://site-0c21528a747244fda433b4bd55129eee.freebuff.page>.
+
+---
+
 ## Why this exists
 
 AI video models will happily redraw a label, misspell a brand, or invent a second ingredient list. Brand teams need evidence, not vibes. BrandProof turns the finished clip into frame-level OCR evidence:
@@ -401,6 +416,8 @@ Tesseract.js downloads its WASM engine and the `eng` traineddata from the jsDeli
 ---
 
 ## Publish the live app for free
+
+The submission build is already live at <https://site-ebd712779b3a4bf1879d40dc062c2b30.freebuff.page> (Production, `main`, key bound). The steps below reproduce that deployment from scratch.
 
 BrandProof deploys as static `dist/` assets plus a Worker that serves `/api/comfy/*` and the SPA. Direct generation only works when the Worker and the `COMFY_API_KEY` secret are deployed together.
 
