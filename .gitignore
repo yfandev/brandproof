@@ -15,3 +15,6 @@ coverage
 
 # Tesseract language models cached by local OCR scripts
 eng.traineddata
+
+# local review captures
+artifacts/
