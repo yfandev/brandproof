@@ -40,7 +40,13 @@ export interface CatalogRunnerDeps {
     /** Comfy job id, so verification can fall back to the Worker stream. */
     jobId: string | null;
   }): Promise<VerificationReport>;
-  onClip?: (input: { productId: string; blob: Blob; filename: string }) => void;
+  onClip?: (input: {
+    productId: string;
+    attemptId: string;
+    attemptIndex: number;
+    blob: Blob;
+    filename: string;
+  }) => void;
 }
 
 export interface RunCatalogOptions {
@@ -266,7 +272,15 @@ export async function runCatalog(options: RunCatalogOptions): Promise<CatalogRun
       attempt.videoName = clip.filename;
       attempt.jobId = attempt.jobId ?? clip.jobId;
       await settle(attempt, 'used');
-      deps.onClip?.({ productId: job.id, blob: clip.blob, filename: clip.filename });
+      // Every attempt keeps its own clip: a later retry must not replace the
+      // evidence of what the previous attempt actually generated.
+      deps.onClip?.({
+        productId: job.id,
+        attemptId: attempt.id,
+        attemptIndex,
+        blob: clip.blob,
+        filename: clip.filename,
+      });
       job.videoName = clip.filename;
 
       job.status = 'verifying';

@@ -131,7 +131,10 @@ export function CatalogPanel() {
   const [filter, setFilter] = useState<Filter>('all');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [verifyNote, setVerifyNote] = useState<string | null>(null);
+  /** Keyed by attempt id, so every attempt keeps its own clip. */
   const [clips, setClips] = useState<Record<string, { url: string; name: string }>>({});
+  /** productId → attempt id of the newest clip, used for the card preview. */
+  const [latestClip, setLatestClip] = useState<Record<string, string>>({});
   const [scans, setScans] = useState<Record<string, ScanState>>({});
 
   const reports = useRef(new Map<string, VerificationReport>());
@@ -404,14 +407,11 @@ export function CatalogPanel() {
             setVerifyNote(null);
             return report;
           },
-          onClip: ({ productId, blob, filename }) => {
+          onClip: ({ productId, attemptId, blob, filename }) => {
             const url = URL.createObjectURL(blob);
             clipUrls.current.push(url);
-            setClips((previous) => {
-              const prior = previous[productId];
-              if (prior) URL.revokeObjectURL(prior.url);
-              return { ...previous, [productId]: { url, name: filename } };
-            });
+            setClips((previous) => ({ ...previous, [attemptId]: { url, name: filename } }));
+            setLatestClip((previous) => ({ ...previous, [productId]: attemptId }));
           },
         },
       });
@@ -977,7 +977,7 @@ export function CatalogPanel() {
 
               <div className="cat-cards">
                 {visibleProducts.map((product) => {
-                  const clip = clips[product.id];
+                  const clip = clips[latestClip[product.id] ?? ''] ?? null;
                   const isOpen = expanded === product.id;
                   return (
                     <article className="cat-card" key={product.id}>
@@ -997,7 +997,16 @@ export function CatalogPanel() {
                       <div className="cat-card__body">
                         <div className="cat-card__media">
                           {clip ? (
-                            <video src={clip.url} controls playsInline preload="metadata" />
+                            <>
+                              <video src={clip.url} controls playsInline preload="metadata" />
+                              <a
+                                className="btn btn--subtle btn--sm"
+                                href={clip.url}
+                                download={`${product.name.replace(/[^A-Za-z0-9._-]+/g, '-')}-${clip.name}`}
+                              >
+                                Download MP4
+                              </a>
+                            </>
                           ) : (
                             <div className="cat-card__placeholder">
                               {product.videoName ? `Video: ${product.videoName}` : 'No clip yet'}
@@ -1078,6 +1087,28 @@ export function CatalogPanel() {
                                 {attempt.videoName ?? 'no video'} ·{' '}
                                 {attempt.finishedAt ?? 'still running'}
                               </p>
+                              {clips[attempt.id] ? (
+                                <div className="cat-attempt__clip">
+                                  <video
+                                    src={clips[attempt.id].url}
+                                    controls
+                                    playsInline
+                                    preload="metadata"
+                                    aria-label={`Attempt ${attempt.index} clip`}
+                                  />
+                                  <a
+                                    className="btn btn--subtle btn--sm"
+                                    href={clips[attempt.id].url}
+                                    download={`attempt-${attempt.index}-${clips[attempt.id].name}`}
+                                  >
+                                    Download attempt {attempt.index} MP4
+                                  </a>
+                                </div>
+                              ) : attempt.videoName ? (
+                                <p className="micro">
+                                  This attempt&apos;s clip is no longer held in this tab; its OCR evidence is kept below.
+                                </p>
+                              ) : null}
                               <p className="cat-attempt__adjustment">
                                 <strong>Revision:</strong> {attempt.adjustment ?? 'Initial prompt, no revision.'}
                               </p>
