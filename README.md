@@ -8,19 +8,36 @@ Built for the **Comfy Open Source × Higgsfield** hackathon. BrandProof runs a s
 
 ![status](https://img.shields.io/badge/status-MVP-d7ff5f) ![license](https://img.shields.io/badge/license-MIT-white) ![stack](https://img.shields.io/badge/stack-React%20%2B%20Vite%20%2B%20Tesseract.js-white)
 
-> ### 🏆 Top 3 — Comfy Build Nights, San Francisco, 28 October 2026
->
-> BrandProof placed in the **top three at the Comfy Build Nights** event held in San Francisco on **28 October 2026**. That event's award list is unranked among the top three, so no further placement is claimed.
->
-> This is the **Build Night result only**. The overall Comfy Open Source × Higgsfield hackathon is judged separately, and no overall result is claimed here.
+---
+
+## 👀 Read this first: two versions in this repository
+
+This repository holds **two builds of BrandProof**. If you judged, reviewed or tried the app at Comfy Build Nights, you saw **v1 — Studio**. Everything in **v2 — Catalog Pilot Run** is new since that award.
+
+|  | **v1 — Studio** (the build that was judged) | **v2 — Catalog Pilot Run** (new) |
+| --- | --- | --- |
+| Scope | One product, one verification | Up to 8 products in one catalog run |
+| Generation | **Generate with Comfy Cloud** for the uploaded photo | Same LTX-2.3 workflow, one real job per product, **in parallel** |
+| Verification | Tesseract.js OCR → PASS / REVIEW / FAIL | Same pipeline and the same verdict rules, per product |
+| Retries | Manual — you press verify again | **Automatic**, max 3 attempts, each retry rewritten from that attempt's own OCR evidence |
+| Results | One evidence report + JSON | Live results board, run metrics, batch JSON and CSV export |
+| Spend controls | None | Server-side budget ledger in D1: per-run budget, concurrency limit, daily cap |
+| Branch | `main` — **frozen at the judged build** | `feature/catalog-pilot-parallel` — **not merged** |
+| Live URL | [site-ebd712779b3a4bf1879d40dc062c2b30](https://site-ebd712779b3a4bf1879d40dc062c2b30.freebuff.page) | [site-f6bf20b690ba408e8078305a9210b7a8](https://site-f6bf20b690ba408e8078305a9210b7a8.freebuff.page) |
+
+**Why the split:** v1 is exactly what was demoed and awarded on 28 October 2026, so `main` and its production deployment stay byte-identical to what the judges saw. The catalog feature is built, tested and deployed on its own branch and its own site; merging it into `main` is a separate decision that has not been taken. v2 changes no verification thresholds, no verdict rules and nothing about the single-product flow.
+
+Jump to: [v1 workflow](#the-product-workflow) · [how verification works](#how-verification-actually-works) · [v2 Catalog Pilot Run](#catalog-pilot-run-new-in-v2-feature-branch)
 
 ---
 
-## ▶ Live demo
+## ▶ Live demos
+
+### v1 — Studio (production, `main`)
 
 # https://site-ebd712779b3a4bf1879d40dc062c2b30.freebuff.page
 
-That is the **Production** deployment of this repository's `main` branch, hosted on Freebuff Sites. The Comfy Cloud API key is bound as a server-side secret on that environment, so **Generate with Comfy Cloud** works for any visitor — no install, no local ComfyUI, no key and no account needed to try the app.
+That is the **Production** deployment of `main` — the awarded build, unchanged. The Comfy Cloud API key is bound as a server-side secret on that environment, so **Generate with Comfy Cloud** works for any visitor — no install, no local ComfyUI, no key and no account needed to try the app.
 
 ```text
 GET https://site-ebd712779b3a4bf1879d40dc062c2b30.freebuff.page/api/comfy/status
@@ -28,6 +45,22 @@ GET https://site-ebd712779b3a4bf1879d40dc062c2b30.freebuff.page/api/comfy/status
 ```
 
 A Preview deployment of the same build is also available at <https://site-0c21528a747244fda433b4bd55129eee.freebuff.page>.
+
+### v2 — Catalog Pilot Run (feature-branch preview)
+
+# https://site-f6bf20b690ba408e8078305a9210b7a8.freebuff.page
+
+A **separate site** built from `feature/catalog-pilot-parallel`, with its own Worker, its own D1 budget ledger and its own copy of the Comfy secret. Open it, choose **Catalog pilot**, add products and start a run — the Studio workflow is still in the same app. Details: [Catalog Pilot Run](#catalog-pilot-run-new-in-v2-feature-branch).
+
+---
+
+## 🏆 Top 3 — Comfy Build Nights, San Francisco, 28 October 2026
+
+> **This award belongs to v1 — Studio**, the single-product build documented in most of this file. The Catalog Pilot Run did not exist at the event and was not judged.
+>
+> BrandProof placed in the **top three at the Comfy Build Nights** event held in San Francisco on **28 October 2026**. That event's award list is unranked among the top three, so no further placement is claimed.
+>
+> This is the **Build Night result only**. The overall Comfy Open Source × Higgsfield hackathon is judged separately, and no overall result is claimed here.
 
 ---
 
@@ -403,8 +436,10 @@ Tesseract.js downloads its WASM engine and the `eng` traineddata from the jsDeli
 
 ---
 
-## Catalog Pilot Run (feature branch)
+## Catalog Pilot Run (new in v2, feature branch)
 
+> **New since the Build Night award.** Everything above this line describes v1 — Studio, the build that was judged on 28 October 2026. This section is what was added afterwards; it was not part of the awarded build.
+>
 > Branch: `feature/catalog-pilot-parallel` · isolated preview: **https://site-f6bf20b690ba408e8078305a9210b7a8.freebuff.page**
 
 A catalog run takes several products at once, generates a clip for each through the same bundled LTX-2.3 workflow on Comfy Cloud, and verifies every returned MP4 with the same OCR pipeline the studio uses. It is developed on its own branch and deployed to its own site, so neither `main` nor the production demo changes.
@@ -461,7 +496,7 @@ Without the secret the UI still loads and the ledger still works, but **Start ca
 - **NOT DETECTED is not a mismatch.** An OCR miss produces REVIEW (or `insufficient-evidence`), not FAIL. FAIL for label text requires repeated near-readings that look like visible distortion, not silence.
 - **Sampling is discrete.** Incorrect text that appears only between sampled frames can be missed. Raise sample count for fast cuts.
 - **Text only, plus a colour heuristic.** There is no logo-shape matching, structural comparison or audio analysis. Palette overlap is a coarse 4×4×4 RGB histogram intersection, not identity.
-- **One product per run.** Multiple labels, multi-language packs and full-frame reading can produce noisy OCR; use the label region.
+- **One product per verification in Studio.** v2's catalog pilot verifies up to 8 products, but each against its own photo and its own clip — never as one shared frame set. Multiple labels on one pack, multi-language packs and full-frame reading can produce noisy OCR; use the label region.
 - **Region OCR assumes stable framing.** A moving label invalidates the fixed rectangle.
 - **No server trust layer.** Reports are browser-generated and unsigned; anyone can edit a downloaded JSON.
 - **Browser codec support.** MP4/H.264 and WebM are supported; MOV/HEVC usually is not. Frame seeking can fail on exotic codecs.
