@@ -442,6 +442,7 @@ export function CatalogPanel() {
         status: job.status,
         message: job.message,
         approvedAttemptId: job.approvedAttemptId,
+        bestAttemptId: job.bestAttemptId,
       },
       attempts: job.attempts,
       evidence: job.evidence,
@@ -977,7 +978,9 @@ export function CatalogPanel() {
 
               <div className="cat-cards">
                 {visibleProducts.map((product) => {
-                  const clip = clips[latestClip[product.id] ?? ''] ?? null;
+                  const clipKey =
+                    product.approvedAttemptId ?? product.bestAttemptId ?? latestClip[product.id] ?? '';
+                  const clip = clips[clipKey] ?? null;
                   const isOpen = expanded === product.id;
                   return (
                     <article className="cat-card" key={product.id}>
@@ -1064,6 +1067,9 @@ export function CatalogPanel() {
                             <div className="cat-attempt" key={attempt.id}>
                               <header className="cat-attempt__head">
                                 <strong>Attempt {attempt.index}</strong>
+                                {product.bestAttemptId === attempt.id && (
+                                  <span className="micro cat-attempt__best">best evidence</span>
+                                )}
                                 {attempt.verdict && (
                                   <Pill
                                     tone={

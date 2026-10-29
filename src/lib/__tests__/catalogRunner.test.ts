@@ -336,4 +336,20 @@ describe('catalog runner', () => {
     expect(job.status).toBe('error');
     expect(recorder.generateCalls).toHaveLength(0);
   });
+
+  it('reports the strongest attempt when nothing reaches PASS', async () => {
+    const job = product('p1');
+    const { deps, recorder } = depsFor({
+      verify: (_job, attempt) => (attempt === 1 ? report('REVIEW') : report('FAIL')),
+    });
+    await runCatalog({ run: runOf([job]), runtime: runtimeOf([job]), deps });
+
+    expect(recorder.generateCalls).toHaveLength(3);
+    expect(job.status).toBe('needs-review');
+    expect(job.approvedAttemptId).toBeNull();
+    // Attempt 1 was newest-best: a REVIEW that read the brand beats the later FAILs.
+    expect(job.bestAttemptId).toBe(job.attempts[0].id);
+    expect(job.evidence).toBe(job.attempts[0].evidence);
+    expect(job.message).toContain('Best evidence is attempt 1');
+  });
 });

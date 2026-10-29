@@ -3537,3 +3537,11 @@ select.input {
 .cat-prompt pre { margin: 6px 0 0; white-space: pre-wrap; font-size: 11px; line-height: 1.5; color: var(--cat-dim); max-height: 220px; overflow: auto; }
 
 .cat-disclaimer { line-height: 1.6; }
+
+/* Marks the attempt the board is reporting when no attempt reached PASS. */
+.cat-attempt__best {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  opacity: 0.8;
+}

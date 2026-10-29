@@ -5,6 +5,7 @@ import {
   composeAttemptPrompt,
   isTerminal,
   newCatalogId,
+  pickBestAttempt,
   summariseReport,
   type CatalogAttempt,
   type CatalogProductJob,
@@ -154,6 +155,17 @@ export async function runCatalog(options: RunCatalogOptions): Promise<CatalogRun
 
   const finishProduct = (job: CatalogProductJob) => {
     job.finishedAt = now().toISOString();
+  };
+
+  /** Point the product at its strongest attempt once the loop is over. */
+  const syncBest = (job: CatalogProductJob): CatalogAttempt | null => {
+    const best = pickBestAttempt(job.attempts);
+    job.bestAttemptId = best?.id ?? null;
+    if (best?.evidence) {
+      job.evidence = best.evidence;
+      job.videoName = best.videoName ?? job.videoName;
+    }
+    return best;
   };
 
   const settle = async (attempt: CatalogAttempt, outcome: 'used' | 'released') => {
@@ -325,6 +337,7 @@ export async function runCatalog(options: RunCatalogOptions): Promise<CatalogRun
       if (report.verdict === 'PASS') {
         job.status = 'approved';
         job.approvedAttemptId = attempt.id;
+        job.bestAttemptId = attempt.id;
         job.message = `Approved on attempt ${attemptIndex}: ${report.headline}`;
         finishProduct(job);
         emit();
@@ -332,8 +345,11 @@ export async function runCatalog(options: RunCatalogOptions): Promise<CatalogRun
       }
 
       if (job.attempts.length >= maxAttempts) {
+        const best = syncBest(job);
         job.status = 'needs-review';
-        job.message = `Still ${report.verdict} after ${maxAttempts} attempts — needs human review. ${report.headline}`;
+        job.message = `No attempt reached PASS in ${maxAttempts}. Best evidence is attempt ${
+          best?.index ?? '—'
+        } (${best?.verdict ?? 'no verdict'}), not the last attempt — open its clip and evidence below. ${report.headline}`;
         finishProduct(job);
         emit();
         return;
