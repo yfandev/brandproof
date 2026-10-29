@@ -202,9 +202,7 @@ export function validateDrafts(drafts: CatalogProductDraft[], hasImage: (id: str
     const label = draft.name.trim() || `Product ${index + 1}`;
     if (!draft.name.trim()) problems.push(`${label}: add a product name.`);
     if (!draft.brand.trim()) problems.push(`${label}: add the exact brand name to preserve.`);
-    if (splitChecks(draft.labelText).length === 0) {
-      problems.push(`${label}: add at least one required label line.`);
-    }
+    // Label lines are optional: with none, only the brand name is checked.
     if (!hasImage(draft.id)) problems.push(`${label}: add a product photo.`);
     if (seen.has(draft.id)) problems.push(`${label}: duplicate product row.`);
     seen.add(draft.id);

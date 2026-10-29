@@ -459,7 +459,7 @@ A catalog run takes several products at once, generates a clip for each through 
 
 ### What a run does
 
-1. You add up to 8 products, each with a photo, brand, required label lines and optional direction.
+1. You add up to 8 products, each with a photo and a required brand name, plus optional label lines to check and optional direction. **Scan photo** OCRs the uploaded pack shot in the browser and offers `set brand` / `+ label` on the lines it actually recognises, so the expected text can be copied instead of retyped; label lines are optional, and with none the brand name is the only check.
 2. On **Start catalog run**, the Worker creates a budgeted run in D1 before anything is generated.
 3. Products are processed **concurrently** up to the configured limit (default 3, max 4), each in its own lane. A slow product never blocks another.
 4. Every generation attempt must first reserve credits server-side (`POST /api/catalog/runs/:id/reservations`). Concurrent attempts cannot reserve the same credits; the gate is a conditional `UPDATE … WHERE spent + reserved + cost <= budget` inside D1.

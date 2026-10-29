@@ -40,6 +40,8 @@ import {
 import { runCatalog, type CatalogRuntimeProduct } from '../lib/catalogRunner';
 import { verifyGeneratedClip } from '../lib/catalogVerify';
 import { loadReferenceImage } from '../lib/image';
+import { recognizeCanvas } from '../lib/ocr';
+import { groupLines } from '../lib/text';
 import { downloadText, reportToJson } from '../lib/report';
 import { Alert, Field, Pill, type Tone } from './ui';
 
@@ -58,6 +60,12 @@ interface Row {
 }
 
 type Filter = 'all' | 'approved' | 'needs-review' | 'running' | 'budget-limited' | 'error';
+
+interface ScanState {
+  status: 'running' | 'done' | 'error';
+  lines?: Array<{ text: string; confidence: number }>;
+  error?: string;
+}
 
 const STATUS_TONE: Record<CatalogProductStatus, Tone> = {
   queued: 'neutral',
@@ -124,6 +132,7 @@ export function CatalogPanel() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [verifyNote, setVerifyNote] = useState<string | null>(null);
   const [clips, setClips] = useState<Record<string, { url: string; name: string }>>({});
+  const [scans, setScans] = useState<Record<string, ScanState>>({});
 
   const reports = useRef(new Map<string, VerificationReport>());
   const runRef = useRef<CatalogRun | null>(null);
@@ -201,6 +210,46 @@ export function CatalogPanel() {
     } catch (error) {
       updateRow(id, { file: null, previewUrl: null, canvas: null, error: readError(error) });
     }
+  };
+
+  const scanRow = async (row: Row) => {
+    if (!row.canvas) return;
+    setScans((previous) => ({ ...previous, [row.id]: { status: 'running' } }));
+    try {
+      const result = await recognizeCanvas(row.canvas, { region: null });
+      const lines = groupLines(result.words)
+        .filter((line) => line.text.replace(/[^a-zA-Z0-9]/g, '').length >= 2)
+        .slice(0, 10);
+      setScans((previous) => ({
+        ...previous,
+        [row.id]: {
+          status: 'done',
+          lines: lines.map((line) => ({ text: line.text, confidence: line.confidence })),
+        },
+      }));
+    } catch (error) {
+      setScans((previous) => ({
+        ...previous,
+        [row.id]: { status: 'error', error: readError(error) },
+      }));
+    }
+  };
+
+  const useScanLine = (id: string, text: string, target: 'brand' | 'label') => {
+    const clean = text.replace(/\s+/g, ' ').trim();
+    if (!clean) return;
+    if (target === 'brand') {
+      updateRow(id, { brand: clean });
+      return;
+    }
+    setRows((previous) =>
+      previous.map((row) => {
+        if (row.id !== id) return row;
+        if (!row.labelText.trim()) return { ...row, labelText: clean };
+        if (row.labelText.includes(clean)) return row;
+        return { ...row, labelText: `${row.labelText.trimEnd()}\n${clean}` };
+      }),
+    );
   };
 
   const removeRow = (id: string) => {
@@ -451,9 +500,10 @@ export function CatalogPanel() {
             </ol>
           </details>
           <p className="micro">
-            The brand name is a required check, not just an input: the clip must actually show it. PASS needs the brand
-            and every required label line read in most sampled frames; a clip whose text is clearly readable but never
-            shows the brand is a FAIL. BrandProof checks visible label text only. It does not verify product shape,
+            The brand name is the one required check, not just an input: the clip must actually show it. Label lines are
+            optional extra checks — leave them empty and only the brand is verified. When label lines are configured,
+            PASS needs the brand and those lines read in most sampled frames. <strong>Scan photo</strong> OCRs the
+            product photo in the browser so you can copy the exact printed text instead of retyping it. BrandProof checks visible label text only. It does not verify product shape,
             ingredients, legal claims or overall authenticity. Comfy Cloud does not report per-job credit usage, so every
             credit figure is a planning estimate.
           </p>
@@ -577,7 +627,11 @@ export function CatalogPanel() {
                       placeholder="BOTANIKA"
                     />
                   </Field>
-                  <Field label="Required label lines" hint="One check per line." htmlFor={`${row.id}-label`}>
+                  <Field
+                    label="Label lines to check"
+                    hint="Optional. One check per line — leave empty to verify the brand name only."
+                    htmlFor={`${row.id}-label`}
+                  >
                     <textarea
                       id={`${row.id}-label`}
                       className="textarea textarea--sm"
@@ -601,6 +655,60 @@ export function CatalogPanel() {
                 </div>
               </div>
               {row.error && <p className="micro micro--warn">{row.error}</p>}
+
+              {row.canvas && (
+                <div className="cat-scan">
+                  <div className="cat-scan__head">
+                    <span className="micro">
+                      Runs Tesseract.js OCR on this product photo, so you can copy exact printed text instead of retyping it.
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={busy || scans[row.id]?.status === 'running'}
+                      onClick={() => void scanRow(row)}
+                    >
+                      {scans[row.id]?.status === 'running' ? 'Scanning…' : 'Scan photo'}
+                    </button>
+                  </div>
+
+                  {scans[row.id]?.status === 'error' && (
+                    <p className="micro micro--warn">Could not read this photo: {scans[row.id]?.error}</p>
+                  )}
+
+                  {scans[row.id]?.status === 'done' &&
+                    ((scans[row.id]?.lines ?? []).length === 0 ? (
+                      <p className="micro">No text was recognised in this photo. Enter the brand name manually.</p>
+                    ) : (
+                      <ul className="cat-scan__list">
+                        {(scans[row.id]?.lines ?? []).map((line, lineIndex) => (
+                          <li key={`${line.text}-${lineIndex}`} className="cat-scan__line">
+                            <span className="cat-scan__text">{line.text}</span>
+                            <span className="cat-scan__conf">{Math.round(line.confidence)}%</span>
+                            <span className="cat-scan__buttons">
+                              <button
+                                type="button"
+                                className="chipbtn"
+                                disabled={busy}
+                                onClick={() => useScanLine(row.id, line.text, 'brand')}
+                              >
+                                set brand
+                              </button>
+                              <button
+                                type="button"
+                                className="chipbtn"
+                                disabled={busy}
+                                onClick={() => useScanLine(row.id, line.text, 'label')}
+                              >
+                                + label
+                              </button>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ))}
+                </div>
+              )}
             </article>
           ))}
 
