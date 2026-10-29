@@ -69,9 +69,17 @@ function run(overrides: Partial<CatalogRun> = {}): CatalogRun {
 describe('catalog validation', () => {
   it('reports every missing required field', () => {
     const problems = validateDrafts([emptyDraft('p1')], () => false);
-    expect(problems.length).toBeGreaterThanOrEqual(4);
+    expect(problems.length).toBeGreaterThanOrEqual(3);
     expect(problems.join(' ')).toContain('brand name');
     expect(problems.join(' ')).toContain('product photo');
+  });
+
+  it('does not require label lines, only the brand', () => {
+    const problems = validateDrafts(
+      [{ id: 'p1', name: 'A', brand: 'B', labelText: '', instructions: '' }],
+      () => true,
+    );
+    expect(problems).toEqual([]);
   });
 
   it('accepts a complete row', () => {
