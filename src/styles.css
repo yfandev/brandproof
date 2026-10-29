@@ -1721,6 +1721,24 @@ select.input {
   padding: 1px 4px;
 }
 
+.cloud-account {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.014);
+}
+
+.cloud-account__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .cloud-workflow {
   display: flex;
   flex-direction: column;
@@ -3330,11 +3348,11 @@ select.input {
 .cat-row__head h4 { margin: 0; font-size: 13.5px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--cat-text); }
 .cat-row__index { font-family: ui-monospace, monospace; font-size: 11px; color: rgba(215, 255, 95, 0.8); }
 
-.cat-row__body { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px; }
+.cat-row__body { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 12px; }
 @media (max-width: 620px) { .cat-row__body { grid-template-columns: minmax(0, 1fr); } }
 
 .cat-thumb {
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 4 / 5;
   border: 1px dashed var(--cat-line-strong);
   border-radius: 10px;
   display: grid;
@@ -3347,7 +3365,7 @@ select.input {
   text-align: center;
   padding: 6px;
 }
-.cat-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.cat-thumb img { width: 100%; height: 100%; object-fit: contain; background: #07080b; }
 .cat-thumb:hover { border-color: rgba(215, 255, 95, 0.5); }
 
 .cat-row__fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-width: 0; }
@@ -3442,10 +3460,10 @@ select.input {
 .cat-card__title strong { font-size: 13.5px; color: var(--cat-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cat-card__attempts { font-family: ui-monospace, monospace; font-size: 11px; color: var(--cat-dim); }
 
-.cat-card__body { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; padding: 12px; }
+.cat-card__body { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 14px; padding: 12px; }
 @media (max-width: 640px) { .cat-card__body { grid-template-columns: minmax(0, 1fr); } }
 
-.cat-card__media video { width: 100%; border-radius: 9px; display: block; background: #000; }
+.cat-card__media video { width: 100%; max-height: 260px; border-radius: 9px; display: block; background: #000; object-fit: contain; }
 .cat-card__placeholder {
   aspect-ratio: 16 / 9;
   border-radius: 9px;

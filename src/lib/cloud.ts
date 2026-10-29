@@ -1,3 +1,4 @@
+import { prepareGenerationImage } from './generationImage';
 import { convertUiWorkflow } from './workflowConvert';
 
 export const LTX23_WORKFLOW_PAGE =
@@ -297,13 +298,62 @@ export async function fetchComfyStatus(signal?: AbortSignal): Promise<ComfyStatu
   };
 }
 
+export interface ComfyAccount {
+  endpoint: string;
+  email: string | null;
+  workspaceName: string | null;
+  balanceUsd: number | null;
+  prepaidUsd: number | null;
+  cloudCreditUsd: number | null;
+  spendUsd: number | null;
+  currency: string | null;
+  warnings: string[];
+  checkedAt: string | null;
+}
+
+/**
+ * Reads which Comfy Cloud workspace the server key bills against, plus that
+ * workspace's credit balance. A key is bound to one workspace, so this is the
+ * only truthful way for the app to show whose credits a run spends.
+ */
+export async function fetchComfyAccount(signal?: AbortSignal): Promise<ComfyAccount> {
+  const data = await requestJson<Partial<ComfyAccount>>('/api/comfy/account', { signal });
+  const number = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+  return {
+    endpoint: typeof data.endpoint === 'string' ? data.endpoint : 'https://cloud.comfy.org',
+    email: typeof data.email === 'string' ? data.email : null,
+    workspaceName: typeof data.workspaceName === 'string' ? data.workspaceName : null,
+    balanceUsd: number(data.balanceUsd),
+    prepaidUsd: number(data.prepaidUsd),
+    cloudCreditUsd: number(data.cloudCreditUsd),
+    spendUsd: number(data.spendUsd),
+    currency: typeof data.currency === 'string' ? data.currency : null,
+    warnings: Array.isArray(data.warnings) ? data.warnings.filter((item): item is string => typeof item === 'string') : [],
+    checkedAt: typeof data.checkedAt === 'string' ? data.checkedAt : null,
+  };
+}
+
 export async function generateCloudVideo(input: CloudGenerateInput): Promise<CloudGenerateResponse> {
   if (!input.image) throw new CloudApiError('Upload a product photo first.');
   if (!input.prompt.trim()) throw new CloudApiError('The generation prompt is empty.');
   if (!input.workflowText.trim()) throw new CloudApiError('The bundled LTX-2.3 workflow is missing.');
 
+  // The bundled workflow resizes the photo to a fixed 16:9 frame with a
+  // centred crop, so fit the whole pack shot into that ratio first.
+  let prepared: File;
+  try {
+    prepared = await prepareGenerationImage(input.image);
+  } catch (error) {
+    throw new CloudApiError(
+      `The photo could not be prepared for the workflow's 16:9 frame: ${
+        error instanceof Error ? error.message : 'unknown error'
+      }.`,
+      { code: 'image_prepare_failed' },
+    );
+  }
+
   const form = new FormData();
-  form.append('image', input.image, input.image.name || 'product.png');
+  form.append('image', prepared, prepared.name || 'product.png');
   form.append('workflow', input.workflowText);
   form.append('prompt', input.prompt);
   form.append('negative', input.negative);

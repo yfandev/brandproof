@@ -580,6 +580,88 @@ function requestKey(value) {
   return /^[A-Za-z0-9_-]{8,128}$/.test(trimmed) ? trimmed : crypto.randomUUID();
 }
 
+function collectStringFields(source, pattern, depth = 0) {
+  const found = [];
+  if (!source || typeof source !== 'object' || depth > 5) return found;
+  for (const [key, value] of Object.entries(source)) {
+    if (typeof value === 'string' && pattern.test(key) && value.trim()) found.push(value.trim());
+    else if (value && typeof value === 'object') found.push(...collectStringFields(value, pattern, depth + 1));
+  }
+  return found;
+}
+
+function collectNumberFields(source, pattern, depth = 0) {
+  const found = [];
+  if (!source || typeof source !== 'object' || depth > 5) return found;
+  for (const [key, value] of Object.entries(source)) {
+    if (typeof value === 'number' && Number.isFinite(value) && pattern.test(key)) {
+      found.push({ key, value });
+    } else if (value && typeof value === 'object') {
+      found.push(...collectNumberFields(value, pattern, depth + 1));
+    }
+  }
+  return found;
+}
+
+/** Cents in Comfy's billing payload despite the `_micros` suffix. */
+function centsToUsd(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.round(value) / 100 : null;
+}
+
+/**
+ * Reports which Comfy Cloud workspace the server key belongs to, using the
+ * documented account and billing endpoints. A key is scoped to the workspace
+ * that created it, so its credit balance is that workspace's balance.
+ */
+async function accountSummary({ key, fetchImpl }) {
+  const warnings = [];
+  let user = null;
+  let billing = null;
+
+  try {
+    user = await cloudJson('/api/user', { method: 'GET' }, { key, fetchImpl, timeoutMs: 20000 });
+  } catch (error) {
+    warnings.push(
+      `The Comfy Cloud account endpoint did not answer: ${
+        error instanceof Error ? error.message : 'unknown error'
+      }`,
+    );
+  }
+
+  try {
+    billing = await cloudJson(
+      '/api/billing/usage/timeseries?granularity=month&months=1',
+      { method: 'GET' },
+      { key, fetchImpl, timeoutMs: 20000 },
+    );
+  } catch (error) {
+    warnings.push(
+      `The Comfy Cloud billing endpoint did not answer: ${
+        error instanceof Error ? error.message : 'unknown error'
+      }`,
+    );
+  }
+
+  const workspaceNames = user ? collectStringFields(user, /workspace|organi[sz]ation|team|tenant/i) : [];
+  const emails = user ? collectStringFields(user, /email/i) : [];
+  const balance = billing?.summary?.balance ?? null;
+  const spend = typeof billing?.summary?.spend_micros === 'number' ? billing.summary.spend_micros / 1_000_000 : null;
+
+  return {
+    endpoint: COMFY_BASE,
+    email: emails[0] ?? null,
+    workspaceName: workspaceNames[0] ?? null,
+    balanceUsd: centsToUsd(balance?.amount_micros),
+    prepaidUsd: centsToUsd(balance?.prepaid_balance_micros),
+    cloudCreditUsd: centsToUsd(balance?.cloud_credit_balance_micros),
+    currency: typeof balance?.currency === 'string' ? balance.currency : null,
+    spendUsd: spend,
+    accountCredits: user ? collectNumberFields(user, /credit|balance|remaining/i).slice(0, 6) : [],
+    warnings,
+    checkedAt: new Date().toISOString(),
+  };
+}
+
 export async function handleComfyRequest(request, env = {}, options = {}) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '');
@@ -601,6 +683,22 @@ export async function handleComfyRequest(request, env = {}, options = {}) {
         api: 'v2',
         workflowRequired: true,
       });
+    }
+
+    if (path === '/api/comfy/account') {
+      if (method !== 'GET') {
+        throw new ComfyCloudError('Use GET for the Comfy account endpoint.', {
+          status: 405,
+          code: 'method_not_allowed',
+        });
+      }
+      if (!key) {
+        throw new ComfyCloudError(
+          'Comfy Cloud is not configured. Add COMFY_API_KEY as a project secret, then redeploy.',
+          { status: 503, code: 'comfy_not_configured' },
+        );
+      }
+      return json(await accountSummary({ key, fetchImpl }));
     }
 
     if (path === '/api/comfy/generate') {
