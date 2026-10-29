@@ -403,6 +403,57 @@ Tesseract.js downloads its WASM engine and the `eng` traineddata from the jsDeli
 
 ---
 
+## Catalog Pilot Run (feature branch)
+
+> Branch: `feature/catalog-pilot-parallel` · isolated preview: **https://site-f6bf20b690ba408e8078305a9210b7a8.freebuff.page**
+
+A catalog run takes several products at once, generates a clip for each through the same bundled LTX-2.3 workflow on Comfy Cloud, and verifies every returned MP4 with the same OCR pipeline the studio uses. It is developed on its own branch and deployed to its own site, so neither `main` nor the production demo changes.
+
+### What a run does
+
+1. You add up to 8 products, each with a photo, brand, required label lines and optional direction.
+2. On **Start catalog run**, the Worker creates a budgeted run in D1 before anything is generated.
+3. Products are processed **concurrently** up to the configured limit (default 3, max 4), each in its own lane. A slow product never blocks another.
+4. Every generation attempt must first reserve credits server-side (`POST /api/catalog/runs/:id/reservations`). Concurrent attempts cannot reserve the same credits; the gate is a conditional `UPDATE … WHERE spent + reserved + cost <= budget` inside D1.
+5. The returned MP4 is verified by `analyzeVideo` — frame sampling, multi-pass Tesseract OCR, token matching and the normal PASS/REVIEW/FAIL rules. Nothing about verification is relaxed for the catalog.
+6. PASS approves the product and stops its loop. FAIL or REVIEW records the evidence and, while attempts remain, regenerates with a **targeted revision** derived from the recorded token findings (label not detected → stable front-facing label and less camera movement; visibly distorted → minimal product motion and a steady camera; unreadable → closer, unobstructed, evenly lit label).
+7. After 3 total attempts a product becomes **Needs human review**. The rest of the catalog keeps running.
+
+### Budget model and what is actually enforced
+
+- Comfy Cloud API v2 does **not** report per-job credit usage, so the app never claims provider billing. Each attempt is charged against the run budget at a configurable planning rate (`CATALOG_ESTIMATE_CREDITS_PER_ATTEMPT`, default 1 credit) plus a 15% safety margin — 1.15 credits per attempt by default. Every figure in the UI and exports is labelled **estimate**.
+- Run budget and the deployment-wide daily cap (`CATALOG_DAILY_CREDIT_CAP`, default 30 credits) are enforced **server-side** in D1, so they hold across Worker isolates and across browser tabs. A denied attempt returns `budget-limited` and starts no generation.
+- Reserving is idempotent per attempt id, so a retried HTTP call cannot double-charge.
+- **Concurrency is limited by the browser tab**, not by the Worker: the Worker grants spend, the client decides how many products are in flight. A Durable Object would be needed for server-side concurrency; the platform's managed deploy does not support custom Durable Objects, so this is stated rather than faked.
+- OCR runs through a single Tesseract worker, so verification of concurrent products is queued behind one engine while generation stays parallel.
+
+### Reliability
+
+- Every run, product and attempt has its own id; generation is submitted with the attempt id as its idempotency key.
+- Run state is saved to `localStorage` after every transition. On reload, products that had not reached a verdict are marked **interrupted** with the Comfy job id where one exists — the app never silently resubmits a generation.
+- One product erroring, timing out or exhausting attempts never cancels the run.
+
+### Exports
+
+- **CSV** — one row per product (status, attempts, approved, final verdict, failed checks, sampled frames, estimated credits, video, job ids).
+- **Batch JSON** — run configuration, metrics, every attempt's evidence and the full verification report where this tab still holds it.
+- **Per-product JSON** — the standard BrandProof report when available; otherwise the stored OCR evidence with an explicit note that the video and frame images are gone after a reload.
+
+### Not included
+
+- No sample/demo mode: there are no prerecorded catalog results in this repository, so none are presented as live.
+- No accounts, billing, or catalog management beyond one run in the browser.
+- Label text only: the catalog does not verify product shape, ingredients, legal claims or overall authenticity.
+
+### Setting it up
+
+The pilot site needs two things in its own environment, neither of which touches the main site:
+
+1. a D1 database bound as `CATALOG_DB` (the Worker creates its tables on first use), and
+2. `COMFY_API_KEY` as a project secret on that environment, so generation can run.
+
+Without the secret the UI still loads and the ledger still works, but **Start catalog run** stops at the first generation with Comfy's own `not configured` error. That message is real, not simulated.
+
 ## Limitations
 
 - **OCR is not a forensic check.** Tiny, curved, embossed, engraved, reflective or motion-blurred text can stay unreadable even for a human; BrandProof reports that as low legibility.

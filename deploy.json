@@ -11,6 +11,11 @@
       "name": "comfy-cloud.js",
       "type": "esm",
       "path": "./worker/comfy-cloud.js"
+    },
+    {
+      "name": "catalog.js",
+      "type": "esm",
+      "path": "./worker/catalog.js"
     }
   ],
   "assetsDirectory": "./dist",

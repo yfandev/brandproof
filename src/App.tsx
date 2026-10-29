@@ -21,6 +21,7 @@ import { ProductPanel, type ScanState } from './components/ProductPanel';
 import { BriefPanel } from './components/BriefPanel';
 import { VideoPanel } from './components/VideoPanel';
 import { VerifyPanel } from './components/VerifyPanel';
+import { CatalogPanel } from './components/CatalogPanel';
 import { Pill } from './components/ui';
 
 const DEFAULT_SCENE: SceneId = 'luxury-studio';
@@ -37,6 +38,7 @@ function Logo() {
 }
 
 export default function App() {
+  const [mode, setMode] = useState<'studio' | 'catalog'>('studio');
   const [product, setProduct] = useState<ReferenceAsset | null>(null);
   const [productError, setProductError] = useState<string | null>(null);
   const [productBusy, setProductBusy] = useState(false);
@@ -351,14 +353,36 @@ export default function App() {
           </div>
         </div>
         <div className="topbar__right">
+          <div className="modeswitch" role="group" aria-label="BrandProof mode">
+            <button
+              type="button"
+              className={`modeswitch__btn ${mode === 'studio' ? 'modeswitch__btn--active' : ''}`}
+              aria-pressed={mode === 'studio'}
+              onClick={() => setMode('studio')}
+            >
+              Studio
+            </button>
+            <button
+              type="button"
+              className={`modeswitch__btn ${mode === 'catalog' ? 'modeswitch__btn--active' : ''}`}
+              aria-pressed={mode === 'catalog'}
+              onClick={() => setMode('catalog')}
+            >
+              Catalog pilot
+            </button>
+          </div>
           <span className="hackbadge">Comfy OSS × Higgsfield</span>
-          <button type="button" className="btn btn--subtle btn--sm" onClick={reset}>
-            Reset session
-          </button>
+          {mode === 'studio' && (
+            <button type="button" className="btn btn--subtle btn--sm" onClick={reset}>
+              Reset session
+            </button>
+          )}
         </div>
       </header>
 
       <main className="main">
+        {mode === 'studio' ? (
+          <>
         <section className="hero">
           <div className="hero__copy">
             <p className="eyebrow">
@@ -475,6 +499,11 @@ export default function App() {
           onRerunWithRegion={handleRerunWithRegion}
           onClearRegion={() => setRegion(null)}
         />
+
+          </>
+        ) : (
+          <CatalogPanel />
+        )}
 
         <footer className="footer">
           <div className="footer__brand">

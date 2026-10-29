@@ -1,17 +1,21 @@
 /**
- * Vite dev-server middleware for the same Comfy Cloud proxy the Worker serves.
- * This exists only so the local preview can exercise the real API path; the
- * production endpoint is worker/index.js.
+ * Vite dev-server middleware for the same Comfy Cloud proxy and catalog ledger
+ * the Worker serves. This exists only so the local preview can exercise the
+ * real API paths; the production entrypoint is worker/index.js.
  */
 import { Buffer } from 'node:buffer';
 import { handleComfyRequest } from './comfy-cloud.js';
+import { handleCatalogRequest } from './catalog.js';
 
 export function comfyDevPlugin(env) {
   return {
     name: 'brandproof-comfy-api',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        if (!req.url || !req.url.startsWith('/api/comfy/')) {
+        const url = req.url || '';
+        const isComfy = url.startsWith('/api/comfy/');
+        const isCatalog = url.startsWith('/api/catalog/');
+        if (!isComfy && !isCatalog) {
           next();
           return;
         }
@@ -28,14 +32,20 @@ export function comfyDevPlugin(env) {
               else if (typeof value === 'string') headers.set(name, value);
             }
             const method = (req.method || 'GET').toUpperCase();
-            const request = new Request(`http://localhost${req.url}`, {
+            const request = new Request(`http://localhost${url}`, {
               method,
               headers,
               ...(method === 'GET' || method === 'HEAD' ? {} : { body: Buffer.concat(chunks) }),
             });
-            const response = await handleComfyRequest(request, {
-              COMFY_API_KEY: env.COMFY_API_KEY,
-            });
+            const response = isCatalog
+              ? await handleCatalogRequest(request, {
+                  CATALOG_DB: env.CATALOG_DB,
+                  CATALOG_ESTIMATE_CREDITS_PER_ATTEMPT: env.CATALOG_ESTIMATE_CREDITS_PER_ATTEMPT,
+                  CATALOG_DAILY_CREDIT_CAP: env.CATALOG_DAILY_CREDIT_CAP,
+                })
+              : await handleComfyRequest(request, {
+                  COMFY_API_KEY: env.COMFY_API_KEY,
+                });
             res.statusCode = response.status;
             response.headers.forEach((value, name) => res.setHeader(name, value));
             res.end(Buffer.from(await response.arrayBuffer()));
@@ -49,7 +59,7 @@ export function comfyDevPlugin(env) {
                   message:
                     error instanceof Error
                       ? error.message
-                      : 'The local Comfy Cloud proxy failed.',
+                      : 'The local BrandProof API proxy failed.',
                 },
               }),
             );
