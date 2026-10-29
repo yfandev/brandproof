@@ -14,7 +14,7 @@ Built for the **Comfy Open Source × Higgsfield** hackathon. BrandProof is a sta
 
 ## 👋 Coming back to BrandProof? Start here
 
-**The version you saw at Comfy Build Nights was v1 — Studio, and it won.** On **28 October 2026** in San Francisco that build placed in the **top three** of the Comfy Build Nights hackathon (the event's award list is unranked among the top three; the overall Comfy Open Source × Higgsfield hackathon is judged separately and no overall result is claimed here). One product photo in, one Comfy-generated ad out, one OCR fidelity report.
+**The version you saw at Comfy Build Nights was v1 — Studio, and it won.** On **28 October 2026** in San Francisco that build placed in the **top three** of the Comfy Build Nights event (its award list is unranked among the top three). The online [Comfy Open Source × Higgsfield competition](https://comfy.org/open-source-higgsfield) is a separate entry with its own submission form, not a later round of the Build Nights, and no result in it is claimed here. One product photo in, one Comfy-generated ad out, one OCR fidelity report.
 
 **This version goes further: v2 adds the Catalog Pilot Run — and it is not just a batch.** Instead of one product at a time, you enter up to 8 products, and every product runs a **corrective loop that iterates on the generated video until the label is proven**, rather than a single shot you inspect yourself:
 
@@ -71,7 +71,7 @@ Its **own deployment**, with its own Worker, its own D1 budget ledger and its ow
 >
 > BrandProof placed in the **top three at the Comfy Build Nights** event held in San Francisco on **28 October 2026**. That event's award list is unranked among the top three, so no further placement is claimed.
 >
-> This is the **Build Night result only**. The overall Comfy Open Source × Higgsfield hackathon is judged separately, and no overall result is claimed here.
+> This is the **Build Night result only**. The online [Comfy Open Source × Higgsfield competition](https://comfy.org/open-source-higgsfield) is separate from the Build Nights — Comfy's own FAQ puts the online competition and the Build Nights on separate tracks — and this repository makes no claim about it.
 
 ---
 
@@ -604,7 +604,7 @@ Never paste an API key or a private `COMFY_API_KEY` value into an issue. Revoke 
 
 Released under the [MIT License](LICENSE) — Copyright (c) 2026 yfandev. Tesseract.js is Apache-2.0; ComfyUI, the LTX-2.3 model and the optional Wan 2.2 models carry their own licenses and are not redistributed here.
 
-This repository is a hackathon submission prepared for public release. The project was awarded a **top-three placement at Comfy Build Nights in San Francisco on 28 October 2026**; that event's award list is unranked among the top three. That is the build-night result only — the overall Comfy Open Source × Higgsfield hackathon is judged separately, and eligibility, judging and any ranking there are decided by the organisers.
+This repository is a hackathon submission prepared for public release. The project was awarded a **top-three placement at Comfy Build Nights in San Francisco on 28 October 2026**; that event's award list is unranked among the top three. That is the build-night result only. The online [Comfy Open Source × Higgsfield competition](https://comfy.org/open-source-higgsfield) is a separate entry rather than a later round, and eligibility, judging and any result there are decided by the organisers; no result in that competition is claimed here.
 
 ---
 
