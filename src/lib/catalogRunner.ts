@@ -37,6 +37,8 @@ export interface CatalogRunnerDeps {
     filename: string;
     product: CatalogRuntimeProduct;
     job: CatalogProductJob;
+    /** Comfy job id, so verification can fall back to the Worker stream. */
+    jobId: string | null;
   }): Promise<VerificationReport>;
   onClip?: (input: { productId: string; blob: Blob; filename: string }) => void;
 }
@@ -274,7 +276,13 @@ export async function runCatalog(options: RunCatalogOptions): Promise<CatalogRun
       let report: VerificationReport;
       try {
         report = await enqueueVerify(() =>
-          deps.verify({ blob: clip.blob, filename: clip.filename, product, job }),
+          deps.verify({
+            blob: clip.blob,
+            filename: clip.filename,
+            product,
+            job,
+            jobId: attempt.jobId ?? clip.jobId ?? null,
+          }),
         );
       } catch (error) {
         attempt.error = `Verification failed: ${errorMessage(error)}`;
