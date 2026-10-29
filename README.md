@@ -14,14 +14,14 @@ Built for the **Comfy Open Source × Higgsfield** hackathon. BrandProof runs a s
 
 **The version you saw at Comfy Build Nights was v1 — Studio, and it won.** On **28 October 2026** in San Francisco that build placed in the **top three** of the Comfy Build Nights hackathon (the event's award list is unranked among the top three; the overall Comfy Open Source × Higgsfield hackathon is judged separately and no overall result is claimed here). One product photo in, one Comfy-generated ad out, one OCR fidelity report.
 
-**This version goes further: v2 adds the Catalog Pilot Run.** Instead of one product at a time, you enter up to 8 products and BrandProof does the rest:
+**This version goes further: v2 adds the Catalog Pilot Run — and it is not just a batch.** Instead of one product at a time, you enter up to 8 products, and every product runs a **corrective loop that iterates on the generated video until the label is proven**, rather than a single shot you inspect yourself:
 
 - it generates a real LTX-2.3 clip for every product **concurrently** on Comfy Cloud, up to a configurable limit, so one slow product never holds up the others;
 - it verifies each returned MP4 with the same Tesseract.js OCR pipeline and the same PASS / REVIEW / FAIL rules — nothing is loosened for the catalog;
-- when a clip comes back **FAIL or REVIEW**, it reads that attempt's own OCR evidence, rewrites the prompt to target what the evidence actually showed, and generates a fresh clip — up to **3 attempts**, then the product is flagged for human review;
+- **PASS is a gate, not a report.** If the clip comes back **FAIL or REVIEW**, BrandProof reads that attempt's own OCR evidence, rewrites the prompt to target what the evidence actually showed, and generates a **new clip** for that product — repeating until a genuine PASS lands, or until **3 total attempts** are used up and the product is handed to a human. REVIEW never counts as approved, and no threshold is relaxed to force a pass;
 - a live board tracks every product's attempts, verdict, frame evidence and spend, with run metrics, batch JSON and CSV export, and a **server-side budget ledger** that refuses a new generation when the run budget or the daily cap cannot cover it.
 
-**Nothing was removed or redefined.** v1 Studio is still the first thing you see in the app, the workflow and verdict rules below still describe it exactly, and the catalog calls the same generation and verification code — it adds scale and automatic retries, not a new definition of PASS. The Catalog Pilot Run is served by its own deployment so the awarded build stays exactly as it was demoed.
+**So the difference is the loop, not the batch size.** v1 gives you one clip and a verdict; v2 keeps generating and re-verifying until the returned video actually proves the label, and stops honestly when it cannot. **Nothing was removed or redefined** — v1 Studio is still the first thing you see in the app, the workflow and verdict rules below still describe it exactly, and the catalog calls the same generation and verification code. The Catalog Pilot Run is served by its own deployment so the awarded build stays exactly as it was demoed.
 
 ### v1 → v2 at a glance
 
@@ -30,8 +30,9 @@ Built for the **Comfy Open Source × Higgsfield** hackathon. BrandProof runs a s
 | Scope | One product, one verification | Up to 8 products in one run |
 | Generation | **Generate with Comfy Cloud** for the uploaded photo | Same LTX-2.3 workflow, one real job per product, **in parallel** |
 | Verification | Tesseract.js OCR → PASS / REVIEW / FAIL | Same pipeline and the same verdict rules, per product |
-| Retries | Manual — you press verify again | **Automatic**, max 3 attempts, each retry rewritten from that attempt's own OCR evidence |
-| Results | One evidence report + JSON | Live results board, run metrics, batch JSON and CSV export |
+| **What produces a pass** | You generate a clip and judge the verdict; re-running is manual | A **closed loop**: generate → OCR-verify → rewrite the prompt from that attempt's evidence → regenerate, until a genuine PASS or 3 attempts |
+| **When it stops** | Whenever you stop | Only on PASS, on the 3rd attempt, on budget exhaustion or on an error — REVIEW never approves |
+| Results | One evidence report + JSON | Live results board, per-attempt history, metrics, batch JSON and CSV export |
 | Spend controls | None | Server-side budget ledger in D1: per-run budget, concurrency limit, daily cap |
 | Live URL | [site-ebd712779b3a4bf1879d40dc062c2b30](https://site-ebd712779b3a4bf1879d40dc062c2b30.freebuff.page) | [site-f6bf20b690ba408e8078305a9210b7a8](https://site-f6bf20b690ba408e8078305a9210b7a8.freebuff.page) |
 
@@ -452,6 +453,8 @@ Tesseract.js downloads its WASM engine and the `eng` traineddata from the jsDeli
 
 A catalog run takes several products at once, generates a clip for each through the same bundled LTX-2.3 workflow on Comfy Cloud, and verifies every returned MP4 with the same OCR pipeline the studio uses. It runs as its own deployment, so the awarded Studio demo is untouched.
 
+**A batch, plus a loop.** Running 8 products is the scale; the part that differs from v1 is what happens after each clip arrives. Verification is not the last step of a job here — it is the controller of the job. A product is finished only when its own MP4 passes the existing checks; otherwise BrandProof changes the next generation using the evidence it just produced, and keeps going until PASS or three attempts.
+
 ### What a run does
 
 1. You add up to 8 products, each with a photo, brand, required label lines and optional direction.
@@ -459,8 +462,8 @@ A catalog run takes several products at once, generates a clip for each through 
 3. Products are processed **concurrently** up to the configured limit (default 3, max 4), each in its own lane. A slow product never blocks another.
 4. Every generation attempt must first reserve credits server-side (`POST /api/catalog/runs/:id/reservations`). Concurrent attempts cannot reserve the same credits; the gate is a conditional `UPDATE … WHERE spent + reserved + cost <= budget` inside D1.
 5. The returned MP4 is verified by `analyzeVideo` — frame sampling, multi-pass Tesseract OCR, token matching and the normal PASS/REVIEW/FAIL rules. Nothing about verification is relaxed for the catalog.
-6. PASS approves the product and stops its loop. FAIL or REVIEW records the evidence and, while attempts remain, regenerates with a **targeted revision** derived from the recorded token findings (label not detected → stable front-facing label and less camera movement; visibly distorted → minimal product motion and a steady camera; unreadable → closer, unobstructed, evenly lit label).
-7. After 3 total attempts a product becomes **Needs human review**. The rest of the catalog keeps running.
+6. **The video is iterated on, not merely counted.** A genuine PASS approves the product and ends its loop at once — a passing product is never regenerated. FAIL or REVIEW is treated as a reason to change the generation rather than a final answer: BrandProof records the evidence and, while attempts remain, regenerates that product with a **targeted revision** derived from the recorded token findings (label not detected → stable front-facing label and less camera movement; visibly distorted → minimal product motion and a steady camera; unreadable → closer, unobstructed, evenly lit label).
+7. **The loop terminates honestly.** After 3 total attempts a product becomes **Needs human review** — REVIEW is never promoted to approved and thresholds are never relaxed to manufacture a PASS. Each attempt keeps its own clip, verdict, evidence, revision and reason, so a human sees exactly what was tried. The rest of the catalog keeps running.
 
 ### Budget model and what is actually enforced
 
