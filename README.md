@@ -26,7 +26,14 @@ It is an automated consistency check, **not** proof that the product is pixel-id
 
 ## Quick start
 
-Requirements: **Node.js ≥ 20.19**, a modern Chromium/Firefox/Safari browser, and a **Comfy Cloud API key** for direct generation. A GPU is only needed if you want to use the advanced local ComfyUI path.
+### Prerequisites
+
+- **Node.js ≥ 20.19** (`package.json` → `engines`); Node 22 LTS is a safe choice.
+- **npm**, matching the committed `package-lock.json`. Install with `npm install` / `npm ci`; no other package manager is configured.
+- A modern Chromium, Firefox or Safari browser with Canvas and `HTMLVideoElement` support (OCR runs in a web worker).
+- A **Comfy Cloud account with API access and a key** for direct generation — see [Required Comfy Cloud setup](#required-comfy-cloud-setup). The key is server-side only.
+- Network access to the jsDelivr CDN on first OCR use (Tesseract.js engine + `eng` model).
+- A GPU is only needed for the optional advanced local ComfyUI path; it is **not** required for Comfy Cloud generation.
 
 ```bash
 npm install
@@ -44,7 +51,58 @@ npm run build       # typecheck + production build to dist/
 npm run preview     # serve the production build
 ```
 
-The browser never receives `COMFY_API_KEY`. Locally, Vite's server middleware reads it from `.env.local`; in production the Worker reads the Sites secret. The UI shows an explicit setup card when it is missing.
+The browser never receives `COMFY_API_KEY`. Locally, Vite's server middleware reads it from `.env.local`; in production the Worker reads the hosting secret. The UI shows an explicit setup card when it is missing.
+
+---
+
+## Architecture
+
+BrandProof is a React 19 + TypeScript single-page app built by Vite 8, plus one small server-side piece: a Worker that serves the built assets and proxies the Comfy Cloud API. There is no database, queue, auth service or background job.
+
+| Piece | Technology | File |
+| --- | --- | --- |
+| UI | React 19, TypeScript (strict) | `src/App.tsx`, `src/components/` |
+| Build | Vite 8 (`dist/`) | `vite.config.ts` |
+| Server proxy | Cloudflare-Worker-compatible ES module | `worker/index.js`, `worker/comfy-cloud.js` |
+| Dev proxy | The same handler inside Vite middleware | `worker/dev-server.js` |
+| OCR | Tesseract.js 7 (`eng`) | `src/lib/ocr.ts` |
+| Tests | Vitest 5 | `src/lib/__tests__/`, `worker/comfy-cloud.test.js` |
+
+Data flow:
+
+1. **Browser UI** collects the product image, the expected brand and label text, the scene and the editable prompt.
+2. **Worker proxy** receives a same-origin `POST /api/comfy/generate`, uploads the photo to Comfy Cloud assets, binds the bundled LTX-2.3 graph and submits the job. Only the Worker holds `COMFY_API_KEY`.
+3. **Comfy Cloud** runs the LTX-2.3 image-to-video workflow; the browser polls `GET /api/comfy/jobs/{id}` and fetches the finished MP4 from `GET /api/comfy/jobs/{id}/video`.
+4. **Browser verification** samples frames from that MP4 with an `HTMLVideoElement` and the Canvas API, then runs Tesseract.js 7 OCR on each frame.
+5. **Comparison and report** match the recognized words against the expected tokens and assemble the verdict, evidence and downloadable JSON.
+
+The proxy routes are `/api/comfy/status`, `/api/comfy/generate`, `/api/comfy/jobs/{id}` and `/api/comfy/jobs/{id}/video`. Nothing else is proxied, and the key is never returned by any of them.
+
+---
+
+## Environment variables and secrets
+
+The app reads exactly one environment variable. `COMFY_API_KEY` (and the Worker's built-in `ASSETS` binding) are the only names referenced in the source.
+
+| Variable | Required | Scope | Purpose |
+| --- | --- | --- | --- |
+| `COMFY_API_KEY` | Required for **generation**; optional for import + verification | **Server-side only** — Worker binding `env.COMFY_API_KEY`, or `.env.local` for the Vite dev proxy | Bearer token for `https://cloud.comfy.org/api/v2/*` |
+
+Rules that keep the key safe:
+
+- **Never** rename it to `VITE_COMFY_API_KEY`. Vite inlines `VITE_*` values into browser JavaScript, which would publish the key to every visitor.
+- `.env.local` is git-ignored. `.env.example` contains the name with an empty value and nothing else.
+- In production the key is a hosting secret, not a file: add `COMFY_API_KEY` under **Settings → Secrets**, then redeploy so the Worker receives the binding. `.secrets/` and `.dev-server.pid` are git-ignored as well.
+- The browser only ever calls same-origin `/api/comfy/*`. `GET /api/comfy/status` answers `{ "configured": true | false, ... }` and never echoes the key.
+
+Minimal local configuration:
+
+```bash
+# .env.local — git-ignored, server-side only
+COMFY_API_KEY=your-comfy-cloud-api-key
+```
+
+Without the key the app still loads: import, playback, OCR verification and the JSON report work, while **Generate** returns an explicit "not configured" error instead of a fake job.
 
 ---
 
@@ -312,7 +370,7 @@ The repository does **not** ship the BOTANIKA clip or pack shot. Use your own fi
 ### Automated checks
 
 ```bash
-npm test        # 70 unit tests: normalization, OCR, verdicts, report export, bundled workflow conversion, Comfy Cloud v2 proxy, local ComfyUI client
+npm test        # 71 unit tests: normalization, OCR preprocessing, verdicts, report export, bundled workflow conversion, Comfy Cloud v2 proxy, local ComfyUI client
 npm run build   # typecheck + production build
 ```
 
@@ -383,18 +441,37 @@ A static host serves the UI, import and verification, but not the Comfy proxy. P
 
 ---
 
-## Publish to GitHub
+## Repository, contributing and license
 
-```bash
-git init
-git add .
-git commit -m "BrandProof: product and label fidelity verification for AI video"
-git branch -M main
-git remote add origin https://github.com/<your-user>/brandproof.git
-git push -u origin main
-```
+- **Repository:** https://github.com/yfandev/brandproof (branch `main`)
+- **Clone:** `git clone https://github.com/yfandev/brandproof.git`
 
-The repository is ready to publish: [MIT license](LICENSE), no secrets, no committed build output (`dist/` is ignored), no generated assets. Add a screenshot or GIF of a real verification run to the README if you want extra polish.
+The repository is ready to publish as-is: [MIT license](LICENSE), no secrets, no committed API keys, no committed build output (`dist/`, `freebuff-sites-build/` are git-ignored) and no generated video assets.
+
+### Bug reports
+
+Open an issue at https://github.com/yfandev/brandproof/issues and include:
+
+- what you did (photo type, whether the clip came from Comfy Cloud or an import, sample count, strictness, coverage);
+- the exact UI error or verdict you saw;
+- the downloaded JSON report when the problem is an OCR result — it contains the recognized words, boxes and passes, and contains no video frames and no key;
+- browser and OS.
+
+Never paste an API key or a private `COMFY_API_KEY` value into an issue. Revoke and re-create a key at [platform.comfy.org](https://platform.comfy.org) if one leaks.
+
+### Pull requests
+
+1. Fork the repository and create a branch from `main`.
+2. Install with `npm install`; `.env.local` with your own key is only needed for the generation path.
+3. Keep `npm run typecheck`, `npm test` and `npm run build` green before opening the PR.
+4. Describe any change to sampling, OCR passes or the verdict thresholds: those change what a PASS means, so they need a short rationale and, where feasible, a test.
+5. Do not add secrets, telemetry, paid services or mock results that could be mistaken for live ones.
+
+### License
+
+Released under the [MIT License](LICENSE) — Copyright (c) 2026 yfandev. Tesseract.js is Apache-2.0; ComfyUI, the LTX-2.3 model and the optional Wan 2.2 models carry their own licenses and are not redistributed here.
+
+This repository is a hackathon submission prepared for public release. Submission eligibility and judging are decided by the hackathon organisers; nothing in this repository claims that review has already happened.
 
 ---
 
