@@ -12,6 +12,7 @@ import {
   cropCanvasWithMeta,
   densestTextRegion,
   deriveLabelRegion,
+  labelBlockBbox,
   mapBboxToFrame,
   mergeOcrWords,
   preprocessCanvas,
@@ -274,7 +275,13 @@ function anchorRegion(words: OcrWord[], focusTokens: string[]): Rect | null {
       .sort((a, b) => b.similarity - a.similarity);
     const best = matches[0];
     if (best?.bbox) {
-      const region = deriveLabelRegion(best.bbox);
+      // Grow the anchor to the whole label block first: the required lines are
+      // printed above and below the brand, and a brand-only crop cut them off.
+      const block = labelBlockBbox(
+        best.bbox,
+        words.map((word) => word.bbox),
+      );
+      const region = deriveLabelRegion(block);
       if (region) return region;
     }
   }

@@ -198,7 +198,9 @@ export function matchTokens(
 }
 
 export function nearRatio(threshold: number): number {
-  return Math.max(0.5, threshold * 0.72);
+  // A garbled reading still shares most letters ("BOTAng" for "BOTANIKA" is
+  // 0.625), so it belongs in VISIBLY DISTORTED rather than NOT DETECTED.
+  return Math.max(0.6, threshold * 0.7);
 }
 
 /**
