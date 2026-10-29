@@ -60,6 +60,7 @@ const report: VerificationReport = {
       legible: true,
       brand: [],
       label: [],
+      extraText: [],
       status: 'pass',
       notes: [],
       ocrPasses: [

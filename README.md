@@ -405,6 +405,14 @@ The repository does **not** ship the BOTANIKA clip or pack shot. Use your own fi
 7. Open **Token coverage**. `NOT DETECTED` and `UNREADABLE` are insufficient-evidence states, not proof of a changed label. Only repeated near-readings labelled **VISIBLY DISTORTED** should produce a label FAIL.
 8. Download the JSON report and inspect `diagnostics`, each frame's `ocrPasses`/`ocrRegionSource`, and each token's `finding`.
 
+### Test input photo
+
+The demo input ships with the repository: [`public/test/brown_moisturizer_bottle.jpg`](public/test/brown_moisturizer_bottle.jpg), a portrait pack shot of the BOTANIKA pump bottle. Printed text, top to bottom: `HYDRATING`, `MOISTURIZER`, `BOTANIKA`, `NATURAL INGREDIENTS · PLANT POWERED`.
+
+![BOTANIKA test input pack shot](public/test/brown_moisturizer_bottle.jpg)
+
+Use it as the product reference, enter `BOTANIKA` as the brand, and the three label lines as checks. It is also served at `/test/brown_moisturizer_bottle.jpg` on any deployment. How it is used: [`public/test/README.md`](public/test/README.md).
+
 ### Fast test with a real clip
 
 1. `npm install && npm run dev`, open the app.

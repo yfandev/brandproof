@@ -68,6 +68,18 @@ export interface TokenMatch {
   confidence: number | null;
 }
 
+/**
+ * A word read in a frame that is not the required text but closely resembles it
+ * — for example "BOTANKA" printed above a correct "BOTANIKA".
+ */
+export interface ExtraText {
+  text: string;
+  expected: string;
+  similarity: number;
+  confidence: number;
+  bbox: Bbox;
+}
+
 export interface FrameSample {
   index: number;
   time: number;
@@ -81,6 +93,7 @@ export interface FrameSample {
   legible: boolean;
   brand: TokenMatch[];
   label: TokenMatch[];
+  extraText: ExtraText[];
   status: FrameStatus;
   notes: string[];
   ocrPasses?: OcrPassInfo[];

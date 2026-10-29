@@ -221,6 +221,60 @@ export interface TextLine {
   confidence: number;
 }
 
+export interface ExtraneousReading {
+  text: string;
+  expected: string;
+  similarity: number;
+  confidence: number;
+  bbox: Bbox;
+}
+
+/**
+ * Finds words that are neither the required text nor unrelated text but a close
+ * misspelling of it — the signature of duplicated or re-lettered text in a render
+ * ("BOTANKA" printed above a correct "BOTANIKA"). Fragments and contracted
+ * forms of the same word are ignored, because Tesseract splits and merges words.
+ */
+export function findExtraneousReadings(
+  words: OcrWord[],
+  expectedTokens: string[],
+  minConfidence: number,
+  minSimilarity = 0.8,
+): ExtraneousReading[] {
+  const tokens = expectedTokens.filter((token) => token.length >= 5);
+  if (tokens.length === 0) return [];
+  const seen = new Set<string>();
+  const readings: ExtraneousReading[] = [];
+
+  for (const word of words) {
+    const normalized = word.normalized || normalizeText(word.text);
+    if (normalized.length < 5 || word.confidence < minConfidence) continue;
+    if (tokens.includes(normalized)) continue;
+    if (seen.has(normalized)) continue;
+
+    let best: { token: string; score: number } | null = null;
+    for (const token of tokens) {
+      // A fragment or contraction of the same word is an OCR split, not new text.
+      if (normalized.includes(token) || token.includes(normalized)) continue;
+      const score = similarity(token, normalized);
+      if (!best || score > best.score) best = { token, score };
+    }
+
+    if (best && best.score >= minSimilarity) {
+      seen.add(normalized);
+      readings.push({
+        text: word.text,
+        expected: best.token,
+        similarity: best.score,
+        confidence: word.confidence,
+        bbox: word.bbox,
+      });
+    }
+  }
+
+  return readings;
+}
+
 /** Group OCR words into visual lines for the reference-photo text scanner. */
 export function groupLines(words: OcrWord[]): TextLine[] {
   const sorted = [...words].sort((a, b) => a.bbox.y0 - b.bbox.y0 || a.bbox.x0 - b.bbox.x0);
