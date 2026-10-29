@@ -2,7 +2,12 @@ import type { VerificationReport } from '../types';
 import { analyzeVideo, type AnalyzeProgress } from './analyze';
 import { verificationConfigFor, type CatalogRunConfig } from './catalog';
 import type { CatalogRuntimeProduct } from './catalogRunner';
-import { probeVideo } from './video';
+import {
+  formatBytes,
+  isDefinitelyNotVideo,
+  sniffVideoContainer,
+  waitForVideoMetadata,
+} from './video';
 
 export interface VerifyClipInput {
   blob: Blob;
@@ -15,78 +20,73 @@ export interface VerifyClipInput {
 }
 
 /**
- * Verifies a generated MP4 without showing it: the clip is loaded into a hidden
- * <video>, sampled and OCR'd by the same analyzeVideo pipeline the single-product
- * studio uses, then the element and object URL are torn down.
+ * Verifies a generated MP4 without showing it: the clip is loaded into an
+ * off-screen <video>, sampled and OCR'd by the same analyzeVideo pipeline the
+ * single-product studio uses, then the element and object URL are torn down.
+ *
+ * The container is sniffed first so a non-video body is reported as itself
+ * instead of surfacing later as a vague codec timeout, and metadata is awaited
+ * once (the analysis pipeline used to probe the same blob twice).
  */
 export async function verifyGeneratedClip(input: VerifyClipInput): Promise<VerificationReport> {
-  const url = URL.createObjectURL(input.blob);
-  const file = new File([input.blob], input.filename, {
-    type: input.blob.type || 'video/mp4',
+  const { blob, filename } = input;
+  if (!blob.size) throw new Error('Comfy returned an empty video file, so there is nothing to verify.');
+
+  const container = sniffVideoContainer(new Uint8Array(await blob.slice(0, 12).arrayBuffer()));
+  if (isDefinitelyNotVideo(container)) {
+    throw new Error(
+      `Comfy returned ${formatBytes(blob.size)} of ${container} instead of a video, so it cannot be verified. Download the clip again or regenerate it.`,
+    );
+  }
+
+  const url = URL.createObjectURL(blob);
+  const file = new File([blob], filename, {
+    type: blob.type || 'video/mp4',
   });
-  let video: HTMLVideoElement | null = null;
+  const video = document.createElement('video');
+  video.src = url;
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = 'auto';
+  video.setAttribute('aria-hidden', 'true');
+  // Off-screen rather than transparent: a fully transparent element may not be
+  // composited, and drawing from it can stall.
+  video.style.position = 'fixed';
+  video.style.left = '-9999px';
+  video.style.top = '0';
+  video.style.width = '2px';
+  video.style.height = '2px';
+  video.style.opacity = '1';
+  video.style.pointerEvents = 'none';
+  document.body.append(video);
 
   try {
-    const probe = await probeVideo(url, file);
-
-    video = document.createElement('video');
-    video.src = url;
-    video.muted = true;
-    video.playsInline = true;
-    video.preload = 'auto';
-    video.setAttribute('aria-hidden', 'true');
-    video.style.position = 'fixed';
-    video.style.left = '-9999px';
-    video.style.width = '2px';
-    video.style.height = '2px';
-    video.style.opacity = '0';
-    video.style.pointerEvents = 'none';
-    document.body.append(video);
-
-    await new Promise<void>((resolve, reject) => {
-      const element = video as HTMLVideoElement;
-      if (element.readyState >= 1) {
-        resolve();
-        return;
-      }
-      const timer = window.setTimeout(() => {
-        reject(new Error('The generated clip did not become readable in time.'));
-      }, 15000);
-      element.addEventListener(
-        'loadedmetadata',
-        () => {
-          window.clearTimeout(timer);
-          resolve();
-        },
-        { once: true },
+    let probe;
+    try {
+      probe = await waitForVideoMetadata(video, file);
+    } catch (error) {
+      throw new Error(
+        `${error instanceof Error ? error.message : 'The generated clip could not be read.'} (${
+          formatBytes(blob.size)
+        }, ${blob.type || 'unknown type'}, ${container} container.)`,
       );
-      element.addEventListener(
-        'error',
-        () => {
-          window.clearTimeout(timer);
-          reject(new Error('The browser could not decode the generated clip.'));
-        },
-        { once: true },
-      );
-    });
+    }
 
     return await analyzeVideo({
       video,
       config: verificationConfigFor({ brand: input.brand, labelText: input.labelText }, input.config),
       reference: input.product.reference,
-      videoMeta: { name: input.filename, source: 'generated', duration: probe.duration },
+      videoMeta: { name: filename, source: 'generated', duration: probe.duration },
       onProgress: input.onProgress,
     });
   } finally {
-    if (video) {
-      video.removeAttribute('src');
-      try {
-        video.load();
-      } catch {
-        // Best effort teardown.
-      }
-      video.remove();
+    video.removeAttribute('src');
+    try {
+      video.load();
+    } catch {
+      // Best effort teardown.
     }
+    video.remove();
     URL.revokeObjectURL(url);
   }
 }

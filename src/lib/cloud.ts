@@ -1,5 +1,11 @@
 import { prepareGenerationImage } from './generationImage';
 import { convertUiWorkflow } from './workflowConvert';
+import {
+  formatBytes,
+  isDefinitelyNotVideo,
+  sniffVideoContainer,
+  type VideoContainer,
+} from './video';
 
 export const LTX23_WORKFLOW_PAGE =
   'https://comfy.org/workflows/video_ltx2_3_i2v-7cc1d3bd2802/';
@@ -378,6 +384,10 @@ export async function getCloudJob(jobId: string, signal?: AbortSignal): Promise<
 export interface CloudVideo {
   blob: Blob;
   filename: string;
+  /** Bytes the Comfy job reported, or the downloaded size when it did not. */
+  sizeBytes: number;
+  /** Signature of the first bytes, so the UI can name a non-video body. */
+  container: VideoContainer;
 }
 
 function filenameFromDisposition(value: string | null): string | null {
@@ -424,7 +434,18 @@ export async function downloadCloudVideo(jobId: string, signal?: AbortSignal): P
       `Comfy Cloud returned "${blob.type || 'unknown content'}" instead of a video file.`,
     );
   }
-  return { blob, filename };
+
+  const container = sniffVideoContainer(new Uint8Array(await blob.slice(0, 12).arrayBuffer()));
+  if (isDefinitelyNotVideo(container)) {
+    throw new CloudApiError(
+      `Comfy Cloud returned ${formatBytes(blob.size)} of ${container} instead of video bytes. Regenerate the clip; if it keeps happening the output asset may have expired.`,
+      { code: 'not_video_bytes' },
+    );
+  }
+
+  const reportedSize = Number(response.headers.get('x-video-size-bytes'));
+  const sizeBytes = Number.isFinite(reportedSize) && reportedSize > 0 ? reportedSize : blob.size;
+  return { blob, filename, sizeBytes, container };
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {

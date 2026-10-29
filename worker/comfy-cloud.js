@@ -793,6 +793,12 @@ export async function handleComfyRequest(request, env = {}, options = {}) {
       headers.set('Content-Type', output.contentType || 'video/mp4');
       headers.set('Content-Disposition', `attachment; filename="${safeFilename(output.name)}"`);
       headers.set('Cache-Control', 'no-store');
+      // Comfy reports the asset size on the job; expose it so the browser can
+      // show real bytes rather than inferring them from a stalled download.
+      if (typeof output.sizeBytes === 'number' && output.sizeBytes > 0) {
+        headers.set('X-Video-Size-Bytes', String(output.sizeBytes));
+      }
+      headers.set('X-Video-Content-Type', output.contentType || 'video/mp4');
       return new Response(upstream.body, { status: 200, headers });
     }
 

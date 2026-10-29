@@ -468,18 +468,15 @@ export function CatalogPanel() {
         <div>
           <h2 className="cat__title">Run a label-fidelity pilot across a catalog</h2>
           <p className="cat__lede">
-            Add up to {settings?.maxProducts ?? 8} products, then BrandProof generates a clip per product through the
-            bundled LTX-2.3 workflow on Comfy Cloud and verifies each returned MP4 with the same OCR evidence the studio
-            uses. Products run concurrently up to the concurrency limit; every attempt reserves budget on the server
-            before it starts.
+            Add up to {settings?.maxProducts ?? 8} products. BrandProof generates a clip for each through the bundled
+            LTX-2.3 workflow on Comfy Cloud, then verifies every returned MP4 with the studio&apos;s own OCR evidence.
+            Products run concurrently, and every attempt reserves budget on the server before it starts.
           </p>
           <p className="cat__lede">
-            Failing products are retried automatically. When an attempt comes back <strong>FAIL</strong> or{' '}
-            <strong>REVIEW</strong>, BrandProof reads that attempt&apos;s own OCR evidence, rewrites the prompt to target
-            what the evidence actually showed, and regenerates the clip — up to{' '}
-            {settings?.retryLimit ?? MAX_ATTEMPTS_PER_PRODUCT} total attempts per product. A product that still has no
-            genuine PASS after the last attempt is marked <strong>Needs human review</strong>; REVIEW never counts as
-            approval.
+            A <strong>FAIL</strong> or <strong>REVIEW</strong> is not the end: BrandProof rewrites that product&apos;s
+            prompt from the attempt&apos;s own evidence and generates again — up to{' '}
+            {settings?.retryLimit ?? MAX_ATTEMPTS_PER_PRODUCT} attempts, then{' '}
+            <strong>Needs human review</strong>. REVIEW never counts as approval.
           </p>
           <details className="cat-notes">
             <summary>How the automatic retry loop works</summary>
@@ -500,12 +497,10 @@ export function CatalogPanel() {
             </ol>
           </details>
           <p className="micro">
-            The brand name is the one required check, not just an input: the clip must actually show it. Label lines are
-            optional extra checks — leave them empty and only the brand is verified. When label lines are configured,
-            PASS needs the brand and those lines read in most sampled frames. <strong>Scan photo</strong> OCRs the
-            product photo in the browser so you can copy the exact printed text instead of retyping it. BrandProof checks visible label text only. It does not verify product shape,
-            ingredients, legal claims or overall authenticity. Comfy Cloud does not report per-job credit usage, so every
-            credit figure is a planning estimate.
+            The brand name is required and must actually appear in the clip; label lines are optional extra checks, and
+            with none configured only the brand is verified. <strong>Scan photo</strong> OCRs the pack shot in the
+            browser so expected text can be copied instead of retyped. BrandProof checks visible label text only — not
+            product shape, ingredients, legal claims or overall authenticity. Every credit figure is a planning estimate.
           </p>
         </div>
       </div>
