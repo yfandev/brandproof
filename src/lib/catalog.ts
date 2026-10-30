@@ -11,7 +11,7 @@ import type {
 import { buildPrompt } from './scenes';
 
 /** Total generation attempts allowed per product, including the first one. */
-export const MAX_ATTEMPTS_PER_PRODUCT = 3;
+export const MAX_ATTEMPTS_PER_PRODUCT = 2;
 export const DEFAULT_CONCURRENCY = 3;
 export const MAX_CONCURRENCY = 4;
 // Sized for a demo session: one attempt is ~1.15 credits, a product can use three.

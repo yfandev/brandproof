@@ -6,7 +6,7 @@ import { runCatalog, type CatalogRuntimeProduct } from '../catalogRunner';
 const CONFIG: CatalogRunConfig = {
   concurrency: 1,
   budgetCredits: 12,
-  maxAttempts: 3,
+  maxAttempts: 2,
   scene: 'luxury-studio',
   strictness: 'balanced',
   sampleCount: 6,
@@ -76,7 +76,7 @@ function runOf(): CatalogRun {
 
 describe('catalog clip retention', () => {
   it('hands the UI a clip for every attempt, not only the last one', async () => {
-    const rate = 3;
+    const rate = 2;
     const run = runOf();
     const runtime = new Map<string, CatalogRuntimeProduct>([
       [
@@ -116,10 +116,10 @@ describe('catalog clip retention', () => {
       },
     });
 
-    expect(captured).toHaveLength(3);
-    expect(new Set(captured.map((clip) => clip.attemptId)).size).toBe(3);
-    expect(captured.map((clip) => clip.attemptIndex)).toEqual([1, 2, 3]);
-    expect(captured.map((clip) => clip.filename)).toEqual(['clip-1.mp4', 'clip-2.mp4', 'clip-3.mp4']);
+    expect(captured).toHaveLength(2);
+    expect(new Set(captured.map((clip) => clip.attemptId)).size).toBe(2);
+    expect(captured.map((clip) => clip.attemptIndex)).toEqual([1, 2]);
+    expect(captured.map((clip) => clip.filename)).toEqual(['clip-1.mp4', 'clip-2.mp4']);
     expect(run.products[0].status).toBe('approved');
   });
 

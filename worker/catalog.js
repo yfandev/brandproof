@@ -19,7 +19,7 @@
  * estimate, never as provider billing.
  */
 
-export const RETRY_LIMIT = 3;
+export const RETRY_LIMIT = 2;
 export const MAX_CONCURRENCY = 4;
 export const DEFAULT_CONCURRENCY = 3;
 export const DEFAULT_BUDGET_CREDITS = 60;

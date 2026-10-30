@@ -50,7 +50,7 @@ describe('catalog config endpoint', () => {
     expect(status).toBe(200);
     expect(body.durable).toBe(false);
     expect(body.storage).toBe('memory');
-    expect(body.retryLimit).toBe(3);
+    expect(body.retryLimit).toBe(2);
     expect(body.maxConcurrency).toBe(4);
     expect(body.estimateCreditsPerAttempt).toBe(1);
     expect(body.reservationCredits).toBeCloseTo(1.15);
