@@ -23,7 +23,7 @@ Built for the **Comfy Open Source × Higgsfield** hackathon. BrandProof is a sta
 - **PASS is a gate, not a report.** If the clip comes back **FAIL or REVIEW**, BrandProof reads that attempt's own OCR evidence, rewrites the prompt to target what the evidence actually showed, and generates a **new clip** for that product — up to **2 total attempts**. Retries aim at proof, not a guaranteed pass: when the second attempt still doesn't verify the label, the product ends as **Needs human review** with its strongest attempt shown as best evidence, and a run can legitimately finish that way. A product can also finish earlier, still unapproved, as **Error**, **Interrupted** or **Budget limited** — when generation fails, a Comfy job outlives the wait, or the budget refuses another attempt. REVIEW never counts as approved, and no threshold is relaxed to force a pass;
 - a live board tracks every product's attempts, verdict, frame evidence and spend, with run metrics, batch JSON and CSV export, and a **server-side budget ledger** that refuses a new generation when the run budget or the daily cap cannot cover it.
 
-**So the difference is the loop, not the batch size.** v1 gives you one clip and a verdict; v2 retries and re-verifies up to twice per product, and stops honestly at Needs human review when two tries still cannot prove the label. **Nothing was removed or redefined** — v1 Studio is still the first thing you see in the app, the workflow and verdict rules below still describe it exactly, and the catalog calls the same generation and verification code. The Catalog Pilot Run is served by its own deployment so the awarded build stays exactly as it was demoed.
+**So the difference is the loop, not the batch size.** v1 gives you one clip and a verdict; v2 retries and re-verifies up to twice per product, and stops honestly at Needs human review when two tries still cannot prove the label. **Nothing was removed or redefined** — Studio is still in the same app on its own tab, the workflow and verdict rules below still describe it exactly, and the catalog calls the same generation and verification code. **Catalog pilot is the landing tab**, Studio carries the award banner, and the whole app is deployed once, to a single production site.
 
 ### v1 → v2 at a glance
 
@@ -33,10 +33,10 @@ Built for the **Comfy Open Source × Higgsfield** hackathon. BrandProof is a sta
 | Generation | **Generate with Comfy Cloud** for the uploaded photo | Same LTX-2.3 workflow, one real job per product, **in parallel** |
 | Verification | Tesseract.js OCR → PASS / REVIEW / FAIL | Same pipeline and the same verdict rules, per product |
 | **What produces a pass** | You generate a clip and judge the verdict; re-running is manual | A **closed loop**: generate → OCR-verify → rewrite the prompt from that attempt's evidence → regenerate, until a genuine PASS or 2 attempts |
-| **When it stops** | Whenever you stop | Only on PASS, on the 3rd attempt, on budget exhaustion or on an error — REVIEW never approves |
+| **When it stops** | Whenever you stop | Only on PASS, on the second attempt, on budget exhaustion or on an error — REVIEW never approves |
 | Results | One evidence report + JSON | Live results board, per-attempt history, metrics, batch JSON and CSV export |
 | Spend controls | None | Server-side budget ledger in D1: per-run budget, concurrency limit, daily cap |
-| Live URL | [site-ebd712779b3a4bf1879d40dc062c2b30](https://site-ebd712779b3a4bf1879d40dc062c2b30.freebuff.page) — Production | [site-1c9233282e504a2a97f7a99451660186](https://site-1c9233282e504a2a97f7a99451660186.freebuff.page) — Production |
+| Live URL | [site-1c9233282e504a2a97f7a99451660186](https://site-1c9233282e504a2a97f7a99451660186.freebuff.page) — Production, **Studio** tab | Same deployment — **Catalog pilot** tab, which is what the app opens on |
 
 Jump to: [v1 workflow](#the-product-workflow) · [how verification works](#how-verification-actually-works) · [v2 Catalog Pilot Run](#catalog-pilot-run-new-in-v2)
 
@@ -44,31 +44,18 @@ Jump to: [v1 workflow](#the-product-workflow) · [how verification works](#how-v
 
 ## ▶ Live demos
 
-### v1 — Studio (the awarded build)
-
-# https://site-ebd712779b3a4bf1879d40dc062c2b30.freebuff.page
-
-That is the **Production** deployment of the build that was demoed at Comfy Build Nights, unchanged. The Comfy Cloud API key is bound as a server-side secret on that environment, so **Generate with Comfy Cloud** works for any visitor — no install, no local ComfyUI, no key and no account needed to try the app.
-
-```text
-GET https://site-ebd712779b3a4bf1879d40dc062c2b30.freebuff.page/api/comfy/status
-→ {"configured":true,"provider":"Comfy Cloud","api":"v2","workflowRequired":true}
-```
-
-A Preview deployment of the same build is also available at <https://site-0c21528a747244fda433b4bd55129eee.freebuff.page>.
-
-### v2 — Catalog Pilot Run (new)
+### Production
 
 # https://site-1c9233282e504a2a97f7a99451660186.freebuff.page
 
-That is the **permanent Production deployment** of the Catalog Pilot Run. It is its own site, with its own Worker, its own D1 budget ledger and its own copy of the Comfy secret — kept separate so the awarded build above is never affected by it. Open it, choose **Catalog pilot**, add products and start a run; the Studio workflow is still in the same app. Details: [Catalog Pilot Run](#catalog-pilot-run-new-in-v2).
+One app, one Worker, one D1 budget ledger, and the Comfy Cloud API key bound as a server-side secret — so **Generate with Comfy Cloud** works for any visitor: no install, no local ComfyUI, no key and no account needed.
+
+The app opens on **Catalog pilot**; **Studio**, the build that was demoed at Comfy Build Nights, is the second tab in the header and carries the award banner. Both tabs run in this same deployment on the same generation and verification code.
 
 ```text
 GET https://site-1c9233282e504a2a97f7a99451660186.freebuff.page/api/comfy/status
 → {"configured":true,"provider":"Comfy Cloud","api":"v2","workflowRequired":true}
 ```
-
-A Preview deployment of the same build is also available at <https://site-f6bf20b690ba408e8078305a9210b7a8.freebuff.page>.
 
 ---
 
@@ -239,7 +226,7 @@ Let **readable** = frames with legible OCR text. `coverage` is user-set (default
 **PASS** requires all of:
 
 - brand matched in ≥ coverage of readable frames — or, when the word is present but its leading edge is clipped, full reads in ≥ 3 frames plus full-or-partial reads in ≥ coverage of readable frames, with no altered spelling anywhere;
-- every configured label token matched in ≥ coverage of readable frames (skipped if no label text);
+- every configured label token was **read clearly** — matched, at word confidence ≥ 80, in at least 2 readable frames (1 when only a single frame is readable); the label is skipped when no label text is configured. Full-label coverage is still computed and shown, but as a diagnostic: it does not gate the label;
 - readable frames ≥ required;
 - legibility check passes;
 - no critical check fails.
@@ -252,7 +239,9 @@ Let **readable** = frames with legible OCR text. `coverage` is user-set (default
 
 A label line that is simply absent from otherwise readable text is **NOT DETECTED**, not a confirmed mismatch. It produces REVIEW with an explanation that the label may be too small or blurred for OCR, and that the user should mark the label area or use a sharper clip. Likewise, frames where OCR cannot read the label are **UNREADABLE**, not failures.
 
-**REVIEW** is everything else: insufficient readable frames, partial coverage, low OCR confidence, a single near reading, label text only partially found, or all expected label lines undetected.
+**REVIEW** is everything else: insufficient readable frames, brand coverage below target, low OCR confidence, a single near reading, a label token that could not be read at confidence ≥ 80 in 2 readable frames, or all expected label lines undetected.
+
+**The label is judged the way a person judges it.** Per-frame coverage asks "did every label token happen to be perfect in a fixed share of frames?", which a clip fails whenever the camera dwells on the label for a second and then moves on — even though the label was plainly readable. Label verification therefore uses a legibility rule: each configured token must be read correctly at word confidence ≥ 80 in **2 readable frames** (or in the single readable frame, when there is only one). Coverage across all readable frames (`labelRecall`) is still reported in the metrics, the per-token evidence and the label check's text, so a thin read is visible — it just no longer decides the verdict on its own. A label still fails when a token is repeatedly read as a near miss in ≥ 2 frames, and still stops at REVIEW when a token was never read clearly enough; a low score is never promoted to PASS.
 
 **Duplicated lettering fails.** Every unmatched word is compared with the required tokens. A word that is at least 80% similar to a required word, is not a fragment or contraction of it, and appears in the same frame as the correct word, counts as a near-copy — for example `BOTANKA` printed above a correct `BOTANIKA`. Two or more readable frames with such a near-copy fail the critical **No duplicated lettering** check, because the render invented a second, garbled copy of text that should appear once. A single frame produces REVIEW, never FAIL. The offending reading, its similarity, confidence and box are recorded on that frame and in the JSON report.
 
@@ -472,7 +461,7 @@ Tesseract.js downloads its WASM engine and the `eng` traineddata from the jsDeli
 
 > **Added after the Build Night award.** Everything above this line describes v1 — Studio, the build that was demoed and awarded on 28 October 2026. This section is the addition; it was not part of that event.
 >
-> Permanent deployment: **https://site-1c9233282e504a2a97f7a99451660186.freebuff.page** (Production, Comfy key bound). Preview: <https://site-f6bf20b690ba408e8078305a9210b7a8.freebuff.page>
+> Production deployment: **https://site-1c9233282e504a2a97f7a99451660186.freebuff.page** (Comfy key bound).
 
 A catalog run takes several products at once, generates a clip for each through the same bundled LTX-2.3 workflow on Comfy Cloud, and verifies every returned MP4 with the same OCR pipeline the studio uses. It runs as its own deployment, so the awarded Studio demo is untouched.
 
@@ -502,7 +491,7 @@ A product leaves the loop in exactly one of five states. The first two are the i
 | **Interrupted** | A Comfy job stayed unfinished past the 10-minute wait (`CATALOG_JOB_TIMEOUT_MS`). The reservation is kept as spent because the job may still complete at Comfy, and no new generation is submitted — the attempt offers **Re-check this Comfy job** instead of paying for a second render. |
 | **Budget limited** | The reservation endpoint answered `granted: false` (run budget or daily cap exhausted) before that attempt started. No generation is submitted. |
 
-Order of operations inside one attempt: reserve → generate → settle credits → verify → verdict. The budget check therefore always happens before anything is sent to Comfy, and a product can be stopped by it before attempt 3 even exists. On `FAIL` or `REVIEW` with attempts remaining, the next prompt is rebuilt from that attempt's own token findings; the brand name is restated only when it was not `verified` or `detected` in that attempt, so a retry never drops a brand the render actually read. When the loop ends for any of the five reasons, the rest of the catalog keeps running.
+Order of operations inside one attempt: reserve → generate → settle credits → verify → verdict. The budget check therefore always happens before anything is sent to Comfy, and a product can be stopped by it before a second attempt even exists. On `FAIL` or `REVIEW` with attempts remaining, the next prompt is rebuilt from that attempt's own token findings; the brand name is restated only when it was not `verified` or `detected` in that attempt, so a retry never drops a brand the render actually read. When the loop ends for any of the five reasons, the rest of the catalog keeps running.
 
 **Every attempt keeps its clip.** The results board stores each attempt's MP4 separately and shows it inside that attempt, with its own download link, so a retry never overwrites the video that failed. The card preview follows the newest attempt until the product is approved. Clips live in the tab's memory as blob URLs — they survive retries and page state changes, but not a reload, which is why each product and the run also export JSON evidence.
 
@@ -562,7 +551,7 @@ Without the secret the UI still loads and the ledger still works, but **Start ca
 
 ## Publish the live app for free
 
-The submission build is already live at <https://site-ebd712779b3a4bf1879d40dc062c2b30.freebuff.page> (Production, key bound). The steps below reproduce that deployment from scratch.
+The submission build is already live at <https://site-1c9233282e504a2a97f7a99451660186.freebuff.page> (Production, key bound). The steps below reproduce that deployment from scratch.
 
 BrandProof deploys as static `dist/` assets plus a Worker that serves `/api/comfy/*` and the SPA. Direct generation only works when the Worker and the `COMFY_API_KEY` secret are deployed together.
 

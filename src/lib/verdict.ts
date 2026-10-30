@@ -48,6 +48,20 @@ export function requiredReadableFrames(sampleCount: number): number {
   return Math.max(2, Math.ceil(sampleCount * 0.4));
 }
 
+/**
+ * Label verification asks the question a person asks: can this text be read?
+ * A token counts as legible when it was read correctly at this confidence in
+ * enough sampled frames — not when the whole label happened to be perfectly
+ * read in a fixed share of every frame. Per-frame coverage is still reported,
+ * but as a diagnostic: a label that is clear in two close frames and blurred in
+ * the rest is readable to a human, and must not be held back by an average.
+ */
+export const LEGIBLE_LABEL_CONFIDENCE = 80;
+
+export function legibleFrameThreshold(readableCount: number): number {
+  return Math.max(1, Math.min(2, readableCount));
+}
+
 export interface FrameInput {
   index: number;
   time: number;
@@ -230,6 +244,10 @@ function aggregateTokens(
       return current;
     }, null);
     const hits = matches.filter((entry) => entry?.status === 'match').length;
+    // Read correctly at a confidence a person could rely on, in at least one frame.
+    const strongHits = matches.filter(
+      (entry) => entry?.status === 'match' && (entry.confidence ?? 0) >= LEGIBLE_LABEL_CONFIDENCE,
+    ).length;
     const near = matches.filter((entry) => entry?.status === 'near').length;
     const missing = matches.filter((entry) => entry?.status === 'missing').length;
     const unreadable = matches.filter((entry) => entry?.status === 'unreadable').length;
@@ -237,6 +255,7 @@ function aggregateTokens(
       token,
       kind,
       hits,
+      strongHits,
       near,
       missing,
       unreadable,
@@ -439,6 +458,13 @@ export function buildReport(input: BuildReportInput): VerificationReport {
   const readLabelTokens = labelEvidence.filter(
     (evidence) => evidence.finding === 'verified' || evidence.finding === 'detected',
   );
+  const legibleNeeded = legibleFrameThreshold(readableCount);
+  const legibleLabelTokens = labelEvidence.filter(
+    (evidence) => evidence.strongHits >= legibleNeeded,
+  );
+  const weakLabelTokens = labelEvidence.filter(
+    (evidence) => evidence.strongHits < legibleNeeded,
+  );
 
   let labelCheck: CheckResult;
   if (labelTokens.length === 0) {
@@ -479,23 +505,28 @@ export function buildReport(input: BuildReportInput): VerificationReport {
       detail: `The brand was read, but none of the expected label tokens could be read in ${readableCount} readable frames. This is NOT DETECTED / insufficient evidence, not a confirmed mismatch. Mark the label area, choose a sharper clip, or use more frames.`,
       metric: `0 / ${readableCount} readable frames`,
     };
-  } else if ((labelRecall ?? 0) >= coverage) {
+  } else if (legibleLabelTokens.length === labelTokens.length) {
     labelCheck = {
       id: 'label',
       title: 'Printed label text',
       status: 'pass',
       critical: config.labelCritical,
-      detail: `All expected label tokens were read in ${labelHits ?? 0} of ${readableCount} readable frames (${formatPercent(labelRecall ?? 0)}), meeting the ${formatPercent(coverage)} coverage target.`,
-      metric: `${labelHits ?? 0} / ${readableCount} readable frames`,
+      detail: `Every expected label token was read correctly at confidence ${LEGIBLE_LABEL_CONFIDENCE} or better in at least ${legibleNeeded} of ${readableCount} readable frames. Full-label coverage was ${formatPercent(labelRecall ?? 0)} of readable frames, reported as a diagnostic: the question here is whether a person can read the label, and that text was read clearly. ${readLabelTokens.length} of ${labelTokens.length} label tokens detected.`,
+      metric: `${legibleLabelTokens.length} / ${labelTokens.length} tokens legible`,
     };
   } else {
+    const shortfall = labelTokens.length - legibleLabelTokens.length;
+    const shortTokens = weakLabelTokens.map(
+      (evidence) =>
+        `“${evidence.token}”${evidence.bestReading && evidence.bestReading !== evidence.token ? ` (best read “${evidence.bestReading}”)` : ''} in ${evidence.strongHits}/${readableCount}`,
+    );
     labelCheck = {
       id: 'label',
       title: 'Printed label text',
       status: 'review',
       critical: config.labelCritical,
-      detail: `Expected label tokens were read in ${labelHits ?? 0} of ${readableCount} readable frames (${formatPercent(labelRecall ?? 0)}), below the ${formatPercent(coverage)} coverage target. ${readLabelTokens.length} of ${labelTokens.length} label tokens were detected; inspect the per-token evidence before treating this as a change.`,
-      metric: `${labelHits ?? 0} / ${readableCount} readable frames`,
+      detail: `${shortfall} of ${labelTokens.length} label tokens were not read clearly enough (confidence ${LEGIBLE_LABEL_CONFIDENCE} or better in at least ${legibleNeeded} readable frames): ${shortTokens.join(', ')}. Full-label coverage was ${formatPercent(labelRecall ?? 0)} of readable frames. A token that could not be read clearly is not evidence that the printed text changed, so this needs a human look at the frames before it is treated as a change.`,
+      metric: `${legibleLabelTokens.length} / ${labelTokens.length} tokens legible`,
     };
   }
   checks.push(labelCheck);
@@ -650,14 +681,14 @@ export function buildReport(input: BuildReportInput): VerificationReport {
   } else if (criticalPass && enoughEvidence && labelBlocksPass) {
     verdict = 'PASS';
     headline = 'Brand integrity holds';
-    summary = `The brand was recognised in ${brandHits} of ${readableCount} readable frames${labelTokens.length > 0 ? `, and every configured label token was read in ${labelHits ?? 0}` : ''}. Evidence meets the ${formatPercent(coverage)} coverage target. This is an automated OCR consistency check, not proof of pixel-level identity.`;
+    summary = `The brand was recognised in ${brandHits} of ${readableCount} readable frames${labelTokens.length > 0 ? `, and every configured label token was read clearly at confidence ${LEGIBLE_LABEL_CONFIDENCE} or better in at least ${legibleFrameThreshold(readableCount)} frames` : ''}. The brand meets the ${formatPercent(coverage)} coverage target and the label met the legibility rule a person would apply. This is an automated OCR consistency check, not proof of pixel-level identity.`;
   } else {
     verdict = 'REVIEW';
     headline = 'Needs a human check';
     const reasons: string[] = [];
     if (readableCount < required) reasons.push(`only ${readableCount} of ${frames.length} frames were readable (${required} needed)`);
     if (!brandCheck.status.match(/pass/)) reasons.push('brand coverage is incomplete');
-    if (labelCheck.status === 'review') reasons.push('label text was only partially matched');
+    if (labelCheck.status === 'review') reasons.push('label text was not read clearly enough to verify');
     if (extraCheck.status === 'review') reasons.push('an altered copy of required lettering appeared in one frame');
     if (legibilityStatus !== 'pass') reasons.push('OCR confidence is limited');
     if (reasons.length === 0) reasons.push('the sampled evidence is not conclusive');

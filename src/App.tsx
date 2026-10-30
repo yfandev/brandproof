@@ -38,7 +38,7 @@ function Logo() {
 }
 
 export default function App() {
-  const [mode, setMode] = useState<'studio' | 'catalog'>('studio');
+  const [mode, setMode] = useState<'studio' | 'catalog'>('catalog');
   const [product, setProduct] = useState<ReferenceAsset | null>(null);
   const [productError, setProductError] = useState<string | null>(null);
   const [productBusy, setProductBusy] = useState(false);
@@ -383,6 +383,13 @@ export default function App() {
       <main className="main">
         {mode === 'studio' ? (
           <>
+        <div className="award">
+          <span className="award__badge">🏆 Award-winning</span>
+          <span className="award__text">
+            <strong>Top 3 — Comfy Build Nights, San Francisco, 28 October 2026.</strong> This Studio tab is the build
+            that was demoed on stage: one product, one clip, one verdict you can defend.
+          </span>
+        </div>
         <section className="hero">
           <div className="hero__copy">
             <p className="eyebrow">

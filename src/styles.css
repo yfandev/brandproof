@@ -214,6 +214,38 @@ code {
   white-space: nowrap;
 }
 
+/* ---------- award banner (Studio tab) ---------- */
+
+.award {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid rgba(215, 255, 95, 0.28);
+  border-radius: 14px;
+  background: linear-gradient(90deg, rgba(215, 255, 95, 0.12), rgba(215, 255, 95, 0.02));
+  color: #e8eaed;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.award__badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #101216;
+  background: var(--accent);
+  border-radius: 999px;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.award__text strong {
+  color: #f7f8f9;
+  font-weight: 600;
+}
+
 .main {
   max-width: 1320px;
   margin: 0 auto;
