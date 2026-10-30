@@ -150,8 +150,8 @@ export function VerifyPanel({
           </div>
           <p className="micro">
             Strictness sets the token similarity threshold to {Math.round(thresholdFor(strictness) * 100)}% with a
-            matching minimum OCR word confidence. Coverage is the share of readable frames that must contain the expected
-            text. Unreadable frames are never counted as mismatches. Verification runs a full-frame pass plus an
+            matching minimum OCR word confidence. Coverage is the share of readable frames the report expects to contain the expected
+            text; it is shown as a diagnostic, and a token that was read clearly is not held back by it. Unreadable frames are never counted as mismatches. Verification runs a full-frame pass plus an
             automatic or manual label crop with grayscale, contrast and adaptive-threshold OCR variants.
           </p>
         </div>
