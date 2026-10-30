@@ -666,14 +666,6 @@ export function CatalogPanel() {
         <div className="cat-intake">
           <div className="cat-intake__head">
             <h3>Products</h3>
-            <button
-              type="button"
-              className="btn btn--subtle btn--sm"
-              disabled={busy || rows.length >= (settings?.maxProducts ?? 8)}
-              onClick={() => setRows((previous) => [...previous, newRow()])}
-            >
-              Add product
-            </button>
           </div>
 
           {rows.map((row, index) => (
@@ -740,6 +732,7 @@ export function CatalogPanel() {
                     label="Label lines to check"
                     hint="One check per line."
                     htmlFor={`${row.id}-label`}
+                    optional
                   >
                     <textarea
                       id={`${row.id}-label`}
@@ -820,6 +813,17 @@ export function CatalogPanel() {
               )}
             </article>
           ))}
+
+          <div className="cat-intake__foot">
+            <button
+              type="button"
+              className="btn btn--subtle btn--sm"
+              disabled={busy || rows.length >= (settings?.maxProducts ?? 8)}
+              onClick={() => setRows((previous) => [...previous, newRow()])}
+            >
+              Add product
+            </button>
+          </div>
 
           <div className="cat-config">
             <Field label="Scene">
