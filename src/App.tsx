@@ -311,6 +311,10 @@ export default function App() {
     );
   }, [report, brand, labelText, scene, strictness, coverage, sampleCount, labelCritical, region, video]);
 
+  // The catalog tab keeps its own run and snapshot, so it has its own reset.
+  const [catalogResetToken, setCatalogResetToken] = useState(0);
+  const [catalogBusy, setCatalogBusy] = useState(false);
+
   const reset = () => {
     setProduct(null);
     setProductError(null);
@@ -372,11 +376,21 @@ export default function App() {
             </button>
           </div>
           <span className="hackbadge">Comfy open-source build</span>
-          {mode === 'studio' && (
-            <button type="button" className="btn btn--subtle btn--sm" onClick={reset}>
-              Reset session
-            </button>
-          )}
+          <button
+            type="button"
+            className="btn btn--subtle btn--sm"
+            onClick={mode === 'studio' ? reset : () => setCatalogResetToken((token) => token + 1)}
+            disabled={mode === 'catalog' && catalogBusy}
+            title={
+              mode === 'catalog' && catalogBusy
+                ? 'A catalog run is in progress. Reset is available once it finishes.'
+                : mode === 'catalog'
+                  ? 'Clear the catalog drafts, run and saved snapshot in this browser.'
+                  : 'Clear the studio session in this browser.'
+            }
+          >
+            Reset session
+          </button>
         </div>
       </header>
 
@@ -509,7 +523,7 @@ export default function App() {
 
           </>
         ) : (
-          <CatalogPanel />
+          <CatalogPanel resetToken={catalogResetToken} onBusyChange={setCatalogBusy} />
         )}
 
         <footer className="footer">

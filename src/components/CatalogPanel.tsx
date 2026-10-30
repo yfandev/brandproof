@@ -122,7 +122,14 @@ function readError(error: unknown): string {
   return 'Unexpected error.';
 }
 
-export function CatalogPanel() {
+export function CatalogPanel({
+  resetToken = 0,
+  onBusyChange,
+}: {
+  /** Incrementing this clears the tab: drafts, run, clips and the saved snapshot. */
+  resetToken?: number;
+  onBusyChange?: (busy: boolean) => void;
+} = {}) {
   const [settings, setSettings] = useState<CatalogSettings | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>(() => [newRow()]);
@@ -151,6 +158,8 @@ export function CatalogPanel() {
   /** Kept so a resumed attempt can still compare against the reference photo. */
   const runtimeRef = useRef(new Map<string, CatalogRuntimeProduct>());
   const clipUrls = useRef<string[]>([]);
+  /** Bumped on reset so an in-flight run cannot write cleared state back. */
+  const resetEpoch = useRef(0);
 
   const workflow = useMemo(() => parseWorkflowJson(DEFAULT_WORKFLOW_TEXT), []);
 
@@ -189,6 +198,41 @@ export function CatalogPanel() {
         : 'Restored the last completed catalog run from this browser.',
     );
   }, []);
+
+  useEffect(() => {
+    onBusyChange?.(starting || Boolean(resuming));
+  }, [starting, resuming, onBusyChange]);
+
+  useEffect(() => {
+    if (resetToken === 0) return;
+    resetEpoch.current += 1;
+    clipUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    clipUrls.current = [];
+    rows.forEach((row) => {
+      if (row.previewUrl) URL.revokeObjectURL(row.previewUrl);
+    });
+    reports.current.clear();
+    runtimeRef.current.clear();
+    runRef.current = null;
+    try {
+      window.localStorage.removeItem(SNAPSHOT_KEY);
+    } catch {
+      // Storage unavailable: only the in-memory state needed clearing.
+    }
+    setRows([newRow()]);
+    setRun(null);
+    setClips({});
+    setLatestClip({});
+    setScans({});
+    setRestoredNotice(null);
+    setVerifyNote(null);
+    setFormError(null);
+    setExpanded(null);
+    setFilter('all');
+    setConfirming(false);
+    // Rows are read only to release their preview URLs; the token drives the reset.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetToken]);
 
   useEffect(() => {
     return () => {
@@ -284,6 +328,7 @@ export function CatalogPanel() {
 
   const startRun = async () => {
     if (!settings) return;
+    const epoch = resetEpoch.current;
     const problems = [
       ...validateDrafts(rows, hasImage),
       ...validateRunConfig({ ...config, maxAttempts: settings.retryLimit }),
@@ -370,6 +415,7 @@ export function CatalogPanel() {
         run: nextRun,
         runtime,
         onUpdate: (next) => {
+          if (resetEpoch.current !== epoch) return;
           runRef.current = next;
           setRun(next);
           persist(next);
