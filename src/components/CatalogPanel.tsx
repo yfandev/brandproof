@@ -579,20 +579,17 @@ export function CatalogPanel() {
         <div>
           <h2 className="cat__title">Run a label-fidelity pilot across a catalog</h2>
           <p className="cat__lede">
-            Add up to {settings?.maxProducts ?? 8} products. BrandProof generates a clip for each through the bundled
-            LTX-2.3 workflow on Comfy Cloud, then verifies every returned MP4 with the studio&apos;s own OCR evidence.
-            Products run concurrently, and every attempt reserves budget on the server before it starts.
+            Add up to {settings?.maxProducts ?? 8} products. BrandProof generates a clip for each with the bundled
+            LTX-2.3 workflow on Comfy Cloud, then verifies the returned MP4 with the studio&apos;s own OCR evidence.
+            Products run concurrently, and each attempt reserves budget on the server before it starts.
           </p>
           <p className="cat__lede">
-            Every clip is judged by the studio&apos;s own PASS / REVIEW / FAIL rules, and <strong>PASS</strong> is the
-            only approval. A <strong>FAIL</strong> or <strong>REVIEW</strong> sends the product back through generation
-            with its prompt rewritten from that attempt&apos;s own OCR evidence, up to{' '}
-            {settings?.retryLimit ?? MAX_ATTEMPTS_PER_PRODUCT} attempts per product. When those attempts run out without
-            a PASS, the product ends as <strong>Needs human review</strong> with its strongest attempt shown as best
-            evidence — the loop aims at proof but cannot manufacture one, and REVIEW is never promoted. A product can
-            also end earlier, still unapproved, as <strong>Error</strong>, <strong>Interrupted</strong> or{' '}
-            <strong>Budget limited</strong> when a generation fails, a Comfy job outlives the wait, or the budget refuses
-            the next attempt; its card records which one and why.
+            <strong>PASS</strong> is the only approval. A <strong>FAIL</strong> or <strong>REVIEW</strong> regenerates with
+            a prompt rewritten from that attempt&apos;s own OCR evidence, up to{' '}
+            {settings?.retryLimit ?? MAX_ATTEMPTS_PER_PRODUCT} attempts; if none passes, the product ends as{' '}
+            <strong>Needs human review</strong> with its best attempt as evidence. A failed generation, a job that
+            outlives the wait, or a refused budget ends it earlier as <strong>Error</strong>, <strong>Interrupted</strong>{' '}
+            or <strong>Budget limited</strong> — never approved.
           </p>
           <details className="cat-notes">
             <summary>How the automatic retry loop works</summary>
@@ -742,7 +739,7 @@ export function CatalogPanel() {
                   </Field>
                   <Field
                     label="Label lines to check"
-                    hint="Optional. One check per line — leave empty to verify the brand name only."
+                    hint="One check per line."
                     htmlFor={`${row.id}-label`}
                   >
                     <textarea
@@ -934,8 +931,9 @@ export function CatalogPanel() {
               <p className="micro">
                 Every attempt reserves budget on the server before generation, so concurrent products cannot spend the
                 same credits. A product that comes back FAIL or REVIEW is regenerated automatically with a prompt
-                revision built from that attempt&apos;s OCR evidence, up to {settings?.retryLimit ?? 3} total attempts,
-                then marked for human review. REVIEW is never approval.
+                revision built from that attempt&apos;s OCR evidence, up to {settings?.retryLimit ?? 3} total attempts.
+                If none passes it ends unapproved: Needs human review, or an earlier Error, Interrupted or Budget limited
+                stop. REVIEW is never approval.
               </p>
               <div className="cat-confirm__actions">
                 <button type="button" className="btn btn--ghost" onClick={() => setConfirming(false)}>

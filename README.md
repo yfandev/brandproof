@@ -490,6 +490,20 @@ A catalog run takes several products at once, generates a clip for each through 
    **A retry changes the prompt, not the image.** Two synthesised references were tried and both made the render worse: a label-only crop replaced the bottle with a label graphic, and re-drawing the label from OCR text made the model paint that lettering across the whole surface. The reference is therefore always the real product photo, and each retry only revises the prompt. What the app does instead is measure: **Scan photo** reports the printed-line height in the photo and the size it would reach in a 1280×720 render, so a hopelessly small label is stated before a run rather than discovered after three credits. Both prompts restrict printing to the expected lines, and **Packaging not re-lettered** fails a clip that carries far more word readings than the label holds.
 7. **The loop terminates honestly.** After 3 total attempts without a PASS a product becomes **Needs human review** — REVIEW is never promoted to approved and thresholds are never relaxed to manufacture a PASS. A product whose generations keep failing, whose Comfy job outlives the wait, or whose budget is refused ends as **Error**, **Interrupted** or **Budget limited** instead: an earlier stop, recorded with its reason, and never an approval either. Each attempt keeps its own clip, verdict, evidence, revision and reason, so a human sees exactly what was tried. The rest of the catalog keeps running.
 
+### Exactly how a product ends
+
+A product leaves the loop in exactly one of five states. The first two are the intended endings; the last three stop a product early and are always recorded with their reason.
+
+| Status | Set when, precisely |
+| --- | --- |
+| **Approved** | The verification report for the newest clip returns `PASS`. The product is never regenerated after that, and `approvedAttemptId` is set to that attempt. |
+| **Needs human review** | The attempt count has reached the limit (3, clamped to 1–3) **and** the last attempt's report returned `FAIL` or `REVIEW`. `bestAttemptId` is then chosen by `attemptScore` = verdict rank × 100 + brand coverage (0–25) + label coverage (0–20) + readable-frame fraction × 15 + mean OCR confidence (0–5), so the best attempt is not necessarily the last one. |
+| **Error** | No clip was ever produced or read for the last allowed attempt: the generation call threw, the verification call threw, or the budget reservation request itself failed. A generation failure still consumes an attempt, so three generation failures also end here rather than as Needs human review. |
+| **Interrupted** | A Comfy job stayed unfinished past the 10-minute wait (`CATALOG_JOB_TIMEOUT_MS`). The reservation is kept as spent because the job may still complete at Comfy, and no new generation is submitted — the attempt offers **Re-check this Comfy job** instead of paying for a second render. |
+| **Budget limited** | The reservation endpoint answered `granted: false` (run budget or daily cap exhausted) before that attempt started. No generation is submitted. |
+
+Order of operations inside one attempt: reserve → generate → settle credits → verify → verdict. The budget check therefore always happens before anything is sent to Comfy, and a product can be stopped by it before attempt 3 even exists. On `FAIL` or `REVIEW` with attempts remaining, the next prompt is rebuilt from that attempt's own token findings; the brand name is restated only when it was not `verified` or `detected` in that attempt, so a retry never drops a brand the render actually read. When the loop ends for any of the five reasons, the rest of the catalog keeps running.
+
 **Every attempt keeps its clip.** The results board stores each attempt's MP4 separately and shows it inside that attempt, with its own download link, so a retry never overwrites the video that failed. The card preview follows the newest attempt until the product is approved. Clips live in the tab's memory as blob URLs — they survive retries and page state changes, but not a reload, which is why each product and the run also export JSON evidence.
 
 ### Budget model and what is actually enforced
