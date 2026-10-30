@@ -1,4 +1,5 @@
 import type { VerificationReport } from '../types';
+import type { CloudJob } from './cloud';
 import {
   MAX_ATTEMPTS_PER_PRODUCT,
   adjustmentFromEvidence,
@@ -25,6 +26,31 @@ export interface CatalogRuntimeProduct {
   labelReference?: File | null;
 }
 
+/** How long a single Comfy Cloud job may hold a product attempt open. */
+export const CATALOG_JOB_TIMEOUT_MS = 10 * 60 * 1000;
+
+/**
+ * One line of live Comfy job state, so an attempt never looks frozen while it
+ * waits on the queue. The elapsed clock is the caller's, so a resumed attempt
+ * reports the time since it reattached rather than a fake total.
+ */
+export function describeCloudJob(job: CloudJob, elapsedMs: number): string {
+  const seconds = Math.max(0, Math.round(elapsedMs / 1000));
+  const parts = [`Comfy ${job.status}`];
+  if (typeof job.queuePosition === 'number' && job.queuePosition > 0) {
+    parts.push(`queue ${job.queuePosition}`);
+  }
+  const progress = job.progress?.value;
+  if (typeof progress === 'number' && Number.isFinite(progress)) {
+    const percent = progress <= 1 ? progress * 100 : progress;
+    parts.push(`${Math.max(0, Math.min(100, Math.round(percent)))}%`);
+  } else if (job.progress?.nodesTotal) {
+    parts.push(`${job.progress.nodesDone ?? 0}/${job.progress.nodesTotal} nodes`);
+  }
+  parts.push(`${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`);
+  return parts.join(' · ');
+}
+
 const CLOSE_UP_NOTE =
   'The reference image is the same product framed closer, cropped from the product photo. Keep the entire package in frame — cap, base and both sides visible — and never replace it with a flat label, a label graphic, a colour swatch or rows of repeated lettering. Reproduce the printed label exactly as printed, facing the camera, with no added, duplicated or restyled lettering. Pull the camera back so the whole bottle fills roughly half of the frame height: this is a product hero shot, not a macro of the label. Keep the packaging surface plain around the printed lines — no paragraphs, fine print or columns of text.';
 
@@ -41,6 +67,8 @@ export interface CatalogRunnerDeps {
     prompt: string;
     attemptId: string;
     onJobId: (jobId: string) => void;
+    /** Live Comfy job state, so a long queue never looks stuck. */
+    onProgress?: (message: string) => void;
   }): Promise<{ blob: Blob; filename: string; jobId: string | null }>;
   verify(input: {
     blob: Blob;
@@ -280,11 +308,27 @@ export async function runCatalog(options: RunCatalogOptions): Promise<CatalogRun
             attempt.jobId = jobId;
             emit();
           },
+          onProgress: (message) => {
+            job.message = `Attempt ${attemptIndex} · ${message}`;
+            emit();
+          },
         });
       } catch (error) {
         attempt.error = errorMessage(error);
         attempt.finishedAt = now().toISOString();
-        await settle(attempt, 'released');
+        // A job that outlived the wait is still running at Comfy, so its credits
+        // stay spent and a retry would pay for a second render. Stop here and let
+        // the attempt be re-checked instead.
+        const timedOut =
+          (error as { code?: string } | null)?.code === 'job_timeout' && Boolean(attempt.jobId);
+        await settle(attempt, timedOut ? 'used' : 'released');
+        if (timedOut) {
+          job.status = 'interrupted';
+          job.message = `Comfy is still running job ${attempt.jobId}. No new generation was started — use “Re-check this Comfy job” on attempt ${attemptIndex} instead of spending another credit.`;
+          finishProduct(job);
+          emit();
+          return;
+        }
         if (job.attempts.length >= maxAttempts) {
           job.status = 'error';
           job.message = `Generation failed on all ${maxAttempts} attempts: ${attempt.error}`;

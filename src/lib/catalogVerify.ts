@@ -12,7 +12,8 @@ import {
 export interface VerifyClipInput {
   blob: Blob;
   filename: string;
-  product: CatalogRuntimeProduct;
+  /** Only the reference photo is used, so a resumed attempt can pass it alone. */
+  product: Pick<CatalogRuntimeProduct, 'reference'>;
   brand: string;
   labelText: string;
   config: CatalogRunConfig;

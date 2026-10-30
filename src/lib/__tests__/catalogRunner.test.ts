@@ -131,6 +131,8 @@ function depsFor(
     generate?: (job: CatalogProductJob, attempt: number) => Promise<void>;
     budget?: number;
     onClip?: (productId: string) => void;
+    /** Emitted once from inside generate, like a live Comfy job update. */
+    progressMessage?: string;
   } = {},
 ): { deps: CatalogRunnerDeps; recorder: Recorder; budgetLeft: { value: number } } {
   const recorder: Recorder = {
@@ -155,12 +157,13 @@ function depsFor(
     async settle({ attemptId, outcome }) {
       recorder.settleCalls.push({ attemptId, outcome });
     },
-    async generate({ image, prompt, attemptId, onJobId }) {
+    async generate({ image, prompt, attemptId, onJobId, onProgress }) {
       inFlight += 1;
       recorder.maxConcurrent = Math.max(recorder.maxConcurrent, inFlight);
       const job = { name: prompt.match(/base prompt for (.+)$/)?.[1] ?? 'unknown' };
       recorder.generateCalls.push({ productId: job.name, prompt, imageName: image.name });
       onJobId(`job-${attemptId}`);
+      if (options.progressMessage) onProgress?.(options.progressMessage);
       try {
         const attemptIndex = Number(prompt.match(/attempt (\d+)/i)?.[1] ?? 0);
         if (options.generate) {
@@ -386,5 +389,24 @@ describe('catalog runner', () => {
     expect(job.bestAttemptId).toBe(job.attempts[0].id);
     expect(job.evidence).toBe(job.attempts[0].evidence);
     expect(job.message).toContain('Best evidence is attempt 1');
+  });
+
+  it('keeps the product message live while a Comfy job runs', async () => {
+    const job = product('p1');
+    const seen: string[] = [];
+    const { deps } = depsFor({
+      progressMessage: 'Comfy running · 42% · 1m 02s',
+      verify: () => report('PASS'),
+    });
+
+    await runCatalog({
+      run: runOf([job]),
+      runtime: runtimeOf([job]),
+      deps,
+      onUpdate: (next) => seen.push(next.products[0].message),
+    });
+
+    expect(seen.some((message) => message.includes('Comfy running · 42% · 1m 02s'))).toBe(true);
+    expect(seen.every((message) => message !== 'Attempt 1 · generating clip')).toBe(true);
   });
 });
