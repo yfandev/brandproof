@@ -1,9 +1,10 @@
 /**
  * Catalog Pilot Run server controls for BrandProof.
  *
- * A catalog run generates and verifies several products at once, which means
- * several Comfy Cloud jobs can be in flight together. The browser decides how
- * many products run in parallel; this module is the server-side spend gate:
+ * A catalog run generates and verifies several products in sequence, one job per
+ * product, and Comfy Cloud queues whatever exceeds the plan's concurrent-workflow
+ * limit. The browser decides how many products to submit at a time; this module
+ * is the server-side spend gate:
  * every generation attempt has to reserve budget before the browser is allowed
  * to submit it, and concurrent attempts cannot reserve the same credits twice.
  *
