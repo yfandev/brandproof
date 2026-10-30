@@ -24,7 +24,7 @@ describe('labelFeasibility', () => {
     expect(result.renderPx).toBeLessThan(10);
     expect(result.status).toBe('hopeless');
     expect(result.message).toContain('paint plausible-looking text');
-    expect(result.message).toContain('use a photo where the label fills more of the frame');
+    expect(result.message).toContain('re-draw the label from the text read here');
   });
 
   it('calls a marginal line marginal', () => {

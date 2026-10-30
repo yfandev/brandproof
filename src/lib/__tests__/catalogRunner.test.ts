@@ -360,6 +360,23 @@ describe('catalog runner', () => {
     expect(job.status).toBe('approved');
   });
 
+  it('sends the label re-drawn from the photo text when the label could not be verified', async () => {
+    const job = product('p1');
+    const runtime = runtimeOf([job]);
+    runtime.get(job.id)!.labelRendered = new File([new Uint8Array([7])], 'read.png', {
+      type: 'image/png',
+    });
+    const { deps, recorder } = depsFor({
+      verify: (_job, attempt) => (attempt === 1 ? report('REVIEW') : report('PASS')),
+    });
+
+    await runCatalog({ run: runOf([job]), runtime, deps });
+
+    expect(recorder.generateCalls[1].imageName).toBe('read.png');
+    expect(job.attempts[1].referenceImage).toBe('label-rendered');
+    expect(job.attempts[1].prompt).toContain('re-drawn from the text read in the photo');
+  });
+
   it('keeps the product photo when the printed label measures too small to render', async () => {
     const job = product('p1');
     const runtime = runtimeOf([job]);
