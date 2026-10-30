@@ -4,7 +4,7 @@
 
 Upload a product pack shot, generate or import an AI advertising clip, then verify that the brand name and printed label survive the render. BrandProof samples frames in your browser, reads the label with Tesseract.js, overlays the actual OCR word boxes, compares the palette against the reference photo, and produces a PASS / REVIEW / FAIL report you can download as JSON.
 
-**v2 closes the loop.** The Catalog Pilot Run verifies up to 8 products in parallel and does not stop at the first verdict: when a clip comes back FAIL or REVIEW, BrandProof rewrites the prompt from that attempt's own evidence, generates a new clip and re-verifies — repeated until the label is genuinely proven, or until two attempts are spent. Two attempts without a PASS end the product as **Needs human review** with its strongest attempt as best evidence; a failed generation, a Comfy job still running, or a refused budget ends it earlier as **Error**, **Interrupted** or **Budget limited**. No product is approved without a real PASS, and no ending is ever reported as one.
+**v2 closes the loop.** The Catalog Pilot Run verifies up to 8 products in one run and does not stop at the first verdict: when a clip comes back FAIL or REVIEW, BrandProof rewrites the prompt from that attempt's own evidence, generates a new clip and re-verifies — repeated until the label is genuinely proven, or until two attempts are spent. Two attempts without a PASS end the product as **Needs human review** with its strongest attempt as best evidence; a failed generation, a Comfy job still running, or a refused budget ends it earlier as **Error**, **Interrupted** or **Budget limited**. No product is approved without a real PASS, and no ending is ever reported as one.
 
 Built for the **Comfy Open Source × Higgsfield** hackathon. BrandProof is a static React frontend plus a small same-origin Worker API proxy; the Comfy key stays in the Worker. Comfy Cloud runs the actual LTX-2.3 image-to-video workflow, and the returned MP4 is verified locally in the browser.
 
@@ -18,7 +18,7 @@ Built for the **Comfy Open Source × Higgsfield** hackathon. BrandProof is a sta
 
 **This version goes further: v2 adds the Catalog Pilot Run — and it is not just a batch.** Instead of one product at a time, you enter up to 8 products, and every product runs a **corrective loop of up to two attempts on its own generated video**, rather than a single shot you inspect yourself:
 
-- it generates a real LTX-2.3 clip for every product **concurrently** on Comfy Cloud, up to a configurable limit, so one slow product never holds up the others;
+- it generates a real LTX-2.3 clip for every product on Comfy Cloud, one real job per product, and verifies every attempt with the same OCR evidence;
 - it verifies each returned MP4 with the same Tesseract.js OCR pipeline and the same PASS / REVIEW / FAIL rules — nothing is loosened for the catalog;
 - **PASS is a gate, not a report.** If the clip comes back **FAIL or REVIEW**, BrandProof reads that attempt's own OCR evidence, rewrites the prompt to target what the evidence actually showed, and generates a **new clip** for that product — up to **2 total attempts**. Retries aim at proof, not a guaranteed pass: when the second attempt still doesn't verify the label, the product ends as **Needs human review** with its strongest attempt shown as best evidence, and a run can legitimately finish that way. A product can also finish earlier, still unapproved, as **Error**, **Interrupted** or **Budget limited** — when generation fails, a Comfy job outlives the wait, or the budget refuses another attempt. REVIEW never counts as approved, and no threshold is relaxed to force a pass;
 - a live board tracks every product's attempts, verdict, frame evidence and spend, with run metrics, batch JSON and CSV export, and a **server-side budget ledger** that refuses a new generation when the run budget or the daily cap cannot cover it.
@@ -30,7 +30,7 @@ Built for the **Comfy Open Source × Higgsfield** hackathon. BrandProof is a sta
 |  | **v1 — Studio** (the awarded build) | **v2 — Catalog Pilot Run** (added here) |
 | --- | --- | --- |
 | Scope | One product, one verification | Up to 8 products in one run |
-| Generation | **Generate with Comfy Cloud** for the uploaded photo | Same LTX-2.3 workflow, one real job per product, **in parallel** |
+| Generation | **Generate with Comfy Cloud** for the uploaded photo | Same LTX-2.3 workflow, one real job per product, queued by Comfy Cloud |
 | Verification | Tesseract.js OCR → PASS / REVIEW / FAIL | Same pipeline and the same verdict rules, per product |
 | **What produces a pass** | You generate a clip and judge the verdict; re-running is manual | A **closed loop**: generate → OCR-verify → rewrite the prompt from that attempt's evidence → regenerate, until a genuine PASS or 2 attempts |
 | **When it stops** | Whenever you stop | Only on PASS, on the second attempt, on budget exhaustion or on an error — REVIEW never approves |
@@ -471,7 +471,7 @@ A catalog run takes several products at once, generates a clip for each through 
 
 1. You add up to 8 products, each with a photo and a required brand name, plus optional label lines to check and optional direction. **Scan photo** OCRs the uploaded pack shot in the browser and offers `set brand` / `+ label` on the lines it actually recognises, so the expected text can be copied instead of retyped; label lines are optional, and with none the brand name is the only check.
 2. On **Start catalog run**, the Worker creates a budgeted run in D1 before anything is generated.
-3. Products are processed **concurrently** up to the configured limit (default 3, max 4), each in its own lane. A slow product never blocks another.
+3. Products are submitted up to the configured limit (default 3, max 4), one lane each — but they do **not** finish in parallel: Comfy Cloud runs a limited number of workflows at once (1 on Standard, 3 on Creator, 5 on Pro) and queues the rest, so the clips come back at the rate the account allows. Verification of every product is additionally serialised behind the single OCR worker.
 4. Every generation attempt must first reserve credits server-side (`POST /api/catalog/runs/:id/reservations`). Concurrent attempts cannot reserve the same credits; the gate is a conditional `UPDATE … WHERE spent + reserved + cost <= budget` inside D1.
 5. The returned MP4 is verified by `analyzeVideo` — frame sampling, multi-pass Tesseract OCR, token matching and the normal PASS/REVIEW/FAIL rules. Nothing about verification is relaxed for the catalog.
 6. **The video is iterated on, not merely counted.** A genuine PASS approves the product and ends its loop at once — a passing product is never regenerated. FAIL or REVIEW is treated as a reason to change the generation rather than a final answer: BrandProof records the evidence and, while attempts remain, regenerates that product with a **targeted revision** derived from the recorded token findings (label not detected → stable front-facing label and less camera movement; visibly distorted → minimal product motion and a steady camera; unreadable → closer, unobstructed, evenly lit label).
@@ -501,7 +501,8 @@ Order of operations inside one attempt: reserve → generate → settle credits 
 - Run budget and the deployment-wide daily cap (`CATALOG_DAILY_CREDIT_CAP`, default 150 credits) are enforced **server-side** in D1, so they hold across Worker isolates and across browser tabs. A denied attempt returns `budget-limited` and starts no generation. The default run budget is 60 credits and the per-run ceiling is 400, which covers a demo session (one attempt is about 1.15 credits, up to two per product).
 - Reserving is idempotent per attempt id, so a retried HTTP call cannot double-charge.
 - **Concurrency is limited by the browser tab**, not by the Worker: the Worker grants spend, the client decides how many products are in flight. A Durable Object would be needed for server-side concurrency; the platform's managed deploy does not support custom Durable Objects, so this is stated rather than faked.
-- OCR runs through a single Tesseract worker, so verification of concurrent products is queued behind one engine while generation stays parallel.
+- OCR runs through a single Tesseract worker, so verification of every product is queued behind one engine.
+- Comfy Cloud itself caps how many workflows run at once (1 on Standard, 3 on Creator, 5 on Pro) and queues the rest, so a catalog run of 8 products moves through Comfy's queue rather than finishing together.
 
 ### Reliability
 

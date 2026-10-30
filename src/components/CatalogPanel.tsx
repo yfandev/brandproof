@@ -575,11 +575,11 @@ export function CatalogPanel() {
   return (
     <section className="cat">
       <div className="cat__intro">
-        <Pill tone="accent">Catalog pilot · parallel</Pill>
+        <Pill tone="accent">Catalog pilot</Pill>
         <div>
           <h2 className="cat__title">Run a label-fidelity pilot across a catalog</h2>
           <p className="cat__lede">
-            Up to {settings?.maxProducts ?? 8} products at once: each gets a clip from the bundled LTX-2.3 workflow
+            Up to {settings?.maxProducts ?? 8} products in one run: each gets a clip from the bundled LTX-2.3 workflow
             on Comfy Cloud, verified against its own photo by the studio&apos;s OCR evidence.
           </p>
           <p className="cat__lede">
@@ -843,7 +843,7 @@ export function CatalogPanel() {
             </Field>
 
             <div className="cat-config__row">
-              <Field label="Concurrent products" hint={`1–${settings?.maxConcurrency ?? 4}`}>
+              <Field label="Products submitted at a time" hint={`1–${settings?.maxConcurrency ?? 4}`}>
                 <input
                   className="input"
                   type="number"
@@ -914,8 +914,8 @@ export function CatalogPanel() {
                   <dd>{settings?.retryLimit ?? MAX_ATTEMPTS_PER_PRODUCT} (including the first)</dd>
                 </div>
                 <div>
-                  <dt>Parallel products</dt>
-                  <dd>{config.concurrency} at once</dd>
+                  <dt>Products submitted at a time</dt>
+                  <dd>{config.concurrency} — Comfy Cloud queues any beyond your plan&apos;s limit</dd>
                 </div>
                 <div>
                   <dt>Run budget</dt>
