@@ -80,6 +80,7 @@ function report(verdict: VerificationReport['verdict'], token = 'HYDRATING'): Ve
         token,
         kind: 'label',
         hits: verdict === 'PASS' ? 6 : 0,
+        strongHits: verdict === 'PASS' ? 6 : 0,
         near: 0,
         missing: verdict === 'PASS' ? 0 : 6,
         unreadable: 0,

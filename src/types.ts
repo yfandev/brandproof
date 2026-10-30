@@ -146,6 +146,8 @@ export interface TokenEvidence {
   token: string;
   kind: 'brand' | 'label';
   hits: number;
+  /** Frames where the token was read correctly at legible confidence. */
+  strongHits: number;
   near: number;
   missing: number;
   unreadable: number;
