@@ -277,7 +277,7 @@ export function adjustmentFromEvidence(
 
   if (notDetected.length > 0) {
     parts.push(
-      `Preserve the printed label exactly as it appears in the reference photo: keep every existing line, including "${listTokens(notDetected)}", unchanged in wording, case, order, typeface and position. Do not re-typeset, restyle, duplicate, replace or add any lettering, and never substitute the brand name for a label line. Hold the product steady with the label facing the camera, unobstructed, one slow push-in, no cuts, flips or rotation.`,
+      `Preserve the printed label exactly as it appears in the reference photo: keep every existing line, including "${listTokens(notDetected)}", unchanged in wording, case, order, typeface and position. Do not re-typeset, restyle, duplicate, replace or add any lettering, and never substitute the brand name for a label line. Hold the product steady with the label facing the camera, unobstructed, one slow push-in, no cuts, flips or rotation. Keep the brand name and the packaging exactly as they already appear in the previous clip: this attempt changes only how sharply the printed lines read.`,
     );
     reasons.push(`OCR did not detect: ${listTokens(notDetected)}`);
   }
