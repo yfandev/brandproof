@@ -23,8 +23,9 @@ describe('labelFeasibility', () => {
     const result = labelFeasibility(10, { photoHeightPx: 1264 })!;
     expect(result.renderPx).toBeLessThan(10);
     expect(result.status).toBe('hopeless');
-    expect(result.message).toContain('paint plausible-looking text');
-    expect(result.message).toContain('the only way to make this check passable');
+    expect(result.message).toContain('reports what the returned clip actually shows');
+    expect(result.message).toContain('would put more pixels behind each letter');
+    expect(result.message).not.toContain('paint plausible-looking text');
   });
 
   it('calls a marginal line marginal', () => {
