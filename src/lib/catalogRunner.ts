@@ -26,7 +26,7 @@ export interface CatalogRuntimeProduct {
 }
 
 const CLOSE_UP_NOTE =
-  'The reference image is the same product framed closer, cropped from the product photo. Keep the entire package in frame — cap, base and both sides visible — and never replace it with a flat label, a label graphic, a colour swatch or rows of repeated lettering. Reproduce the printed label exactly as printed, facing the camera, with no added, duplicated or restyled lettering.';
+  'The reference image is the same product framed closer, cropped from the product photo. Keep the entire package in frame — cap, base and both sides visible — and never replace it with a flat label, a label graphic, a colour swatch or rows of repeated lettering. Reproduce the printed label exactly as printed, facing the camera, with no added, duplicated or restyled lettering. Pull the camera back so the whole bottle fills roughly half of the frame height: this is a product hero shot, not a macro of the label. Keep the packaging surface plain around the printed lines — no paragraphs, fine print or columns of text.';
 
 export interface CatalogRunnerDeps {
   /** Server-side budget gate. Must be called before one generation attempt. */
