@@ -36,7 +36,7 @@ Built for the **Comfy Open Source × Higgsfield** hackathon. BrandProof is a sta
 | **When it stops** | Whenever you stop | Only on PASS, on the 3rd attempt, on budget exhaustion or on an error — REVIEW never approves |
 | Results | One evidence report + JSON | Live results board, per-attempt history, metrics, batch JSON and CSV export |
 | Spend controls | None | Server-side budget ledger in D1: per-run budget, concurrency limit, daily cap |
-| Live URL | [site-ebd712779b3a4bf1879d40dc062c2b30](https://site-ebd712779b3a4bf1879d40dc062c2b30.freebuff.page) | [site-f6bf20b690ba408e8078305a9210b7a8](https://site-f6bf20b690ba408e8078305a9210b7a8.freebuff.page) |
+| Live URL | [site-ebd712779b3a4bf1879d40dc062c2b30](https://site-ebd712779b3a4bf1879d40dc062c2b30.freebuff.page) — Production | [site-1c9233282e504a2a97f7a99451660186](https://site-1c9233282e504a2a97f7a99451660186.freebuff.page) — Production |
 
 Jump to: [v1 workflow](#the-product-workflow) · [how verification works](#how-verification-actually-works) · [v2 Catalog Pilot Run](#catalog-pilot-run-new-in-v2)
 
@@ -59,9 +59,16 @@ A Preview deployment of the same build is also available at <https://site-0c2152
 
 ### v2 — Catalog Pilot Run (new)
 
-# https://site-f6bf20b690ba408e8078305a9210b7a8.freebuff.page
+# https://site-1c9233282e504a2a97f7a99451660186.freebuff.page
 
-Its **own deployment**, with its own Worker, its own D1 budget ledger and its own copy of the Comfy secret — kept separate so the awarded build above is never affected by it. Open it, choose **Catalog pilot**, add products and start a run; the Studio workflow is still in the same app. Details: [Catalog Pilot Run](#catalog-pilot-run-new-in-v2).
+That is the **permanent Production deployment** of the Catalog Pilot Run. It is its own site, with its own Worker, its own D1 budget ledger and its own copy of the Comfy secret — kept separate so the awarded build above is never affected by it. Open it, choose **Catalog pilot**, add products and start a run; the Studio workflow is still in the same app. Details: [Catalog Pilot Run](#catalog-pilot-run-new-in-v2).
+
+```text
+GET https://site-1c9233282e504a2a97f7a99451660186.freebuff.page/api/comfy/status
+→ {"configured":true,"provider":"Comfy Cloud","api":"v2","workflowRequired":true}
+```
+
+A Preview deployment of the same build is also available at <https://site-f6bf20b690ba408e8078305a9210b7a8.freebuff.page>.
 
 ---
 
@@ -465,7 +472,7 @@ Tesseract.js downloads its WASM engine and the `eng` traineddata from the jsDeli
 
 > **Added after the Build Night award.** Everything above this line describes v1 — Studio, the build that was demoed and awarded on 28 October 2026. This section is the addition; it was not part of that event.
 >
-> Own deployment: **https://site-f6bf20b690ba408e8078305a9210b7a8.freebuff.page**
+> Permanent deployment: **https://site-1c9233282e504a2a97f7a99451660186.freebuff.page** (Production, Comfy key bound). Preview: <https://site-f6bf20b690ba408e8078305a9210b7a8.freebuff.page>
 
 A catalog run takes several products at once, generates a clip for each through the same bundled LTX-2.3 workflow on Comfy Cloud, and verifies every returned MP4 with the same OCR pipeline the studio uses. It runs as its own deployment, so the awarded Studio demo is untouched.
 
