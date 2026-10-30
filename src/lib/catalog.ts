@@ -142,7 +142,7 @@ export interface CatalogAttempt {
   videoName: string | null;
   reservationState: 'granted' | 'denied' | 'released' | 'settled' | null;
   /** Which image was sent to the video model for this attempt. */
-  referenceImage?: 'product' | 'product-close-up';
+  referenceImage?: 'product' | 'product-close-up' | 'label-rendered';
 }
 
 export interface CatalogProductJob {

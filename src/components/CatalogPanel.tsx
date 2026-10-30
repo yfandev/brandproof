@@ -48,6 +48,7 @@ import {
 import { verifyGeneratedClip } from '../lib/catalogVerify';
 import { loadReferenceImage } from '../lib/image';
 import { labelFeasibility, medianLineHeightPx } from '../lib/labelFeasibility';
+import { labelOverlayLines, labelReferenceFile } from '../lib/labelReference';
 import {
   retryReferenceFile,
   retryReferenceRegion,
@@ -341,6 +342,7 @@ export function CatalogPanel() {
       // Every product with label text gets a closer framing of the same package,
       // used only when an attempt fails to verify that text.
       const labelReferences = new Map<string, File | null>();
+      const labelRenderedRefs = new Map<string, File | null>();
       const feasibilities = new Map<string, ReturnType<typeof labelFeasibility>>();
       await Promise.all(
         rows.map(async (row) => {
@@ -358,6 +360,20 @@ export function CatalogPanel() {
                 photoHeightPx: row.canvas.height,
               }),
             );
+            // Rebuild the label from the text that was actually read, so a retry
+            // hands the model letters instead of ten-pixel guesswork.
+            const overlay = labelOverlayLines(scan.words);
+            labelRenderedRefs.set(
+              row.id,
+              overlay.length > 0
+                ? await labelReferenceFile(
+                    row.canvas,
+                    region ?? { x: 0, y: 0, w: 1, h: 1 },
+                    overlay,
+                    row.name,
+                  )
+                : null,
+            );
           } catch {
             labelReferences.set(row.id, null);
           }
@@ -371,6 +387,7 @@ export function CatalogPanel() {
           reference: row.canvas ? { canvas: row.canvas } : null,
           labelReference: labelReferences.get(row.id) ?? null,
           labelFeasibility: feasibilities.get(row.id) ?? null,
+          labelRendered: labelRenderedRefs.get(row.id) ?? null,
           basePrompt: buildCatalogPrompt(
             {
               id: row.id,
