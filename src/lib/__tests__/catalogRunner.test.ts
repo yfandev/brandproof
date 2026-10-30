@@ -11,7 +11,7 @@ import { runCatalog, type CatalogRunnerDeps, type CatalogRuntimeProduct } from '
 const CONFIG: CatalogRunConfig = {
   concurrency: 3,
   budgetCredits: 12,
-  maxAttempts: 3,
+  maxAttempts: 2,
   scene: 'luxury-studio',
   strictness: 'balanced',
   sampleCount: 6,
@@ -220,14 +220,14 @@ describe('catalog runner', () => {
     expect(job.approvedAttemptId).toBe(job.attempts[1].id);
   });
 
-  it('stops after three attempts and needs human review', async () => {
+  it('stops at the attempt limit and needs human review', async () => {
     const job = product('p1');
     const { deps, recorder } = depsFor({ verify: () => report('FAIL') });
     await runCatalog({ run: runOf([job]), runtime: runtimeOf([job]), deps });
 
     expect(job.status).toBe('needs-review');
-    expect(job.attempts).toHaveLength(3);
-    expect(recorder.generateCalls).toHaveLength(3);
+    expect(job.attempts).toHaveLength(2);
+    expect(recorder.generateCalls).toHaveLength(2);
     expect(job.approvedAttemptId).toBeNull();
   });
 
@@ -327,7 +327,7 @@ describe('catalog runner', () => {
     });
 
     expect(broken.status).toBe('error');
-    expect(broken.attempts).toHaveLength(3);
+    expect(broken.attempts).toHaveLength(2);
     expect(healthy.status).toBe('approved');
   });
 
@@ -348,11 +348,7 @@ describe('catalog runner', () => {
 
     await runCatalog({ run: runOf([job]), runtime: runtimeOf([job]), deps });
 
-    expect(recorder.generateCalls.map((call) => call.imageName)).toEqual([
-      'p1.png',
-      'p1.png',
-      'p1.png',
-    ]);
+    expect(recorder.generateCalls.map((call) => call.imageName)).toEqual(['p1.png', 'p1.png']);
     expect(job.attempts.every((attempt) => attempt.referenceImage === 'product')).toBe(true);
   });
 
@@ -375,7 +371,7 @@ describe('catalog runner', () => {
     });
     await runCatalog({ run: runOf([job]), runtime: runtimeOf([job]), deps });
 
-    expect(recorder.generateCalls).toHaveLength(3);
+    expect(recorder.generateCalls).toHaveLength(2);
     expect(job.status).toBe('needs-review');
     expect(job.approvedAttemptId).toBeNull();
     // Attempt 1 was newest-best: a REVIEW that read the brand beats the later FAILs.
