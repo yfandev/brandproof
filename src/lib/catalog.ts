@@ -277,7 +277,7 @@ export function adjustmentFromEvidence(
 
   if (notDetected.length > 0) {
     parts.push(
-      `Preserve the printed label exactly as it appears in the reference photo: keep every existing line, including "${listTokens(notDetected)}", unchanged in wording, case, order, typeface and position. Do not re-typeset, restyle, duplicate, replace or add any lettering, and never substitute the brand name for a label line. Hold the product steady with the label facing the camera, unobstructed, one slow push-in, no cuts, flips or rotation. Keep the brand name and the packaging exactly as they already appear in the previous clip: this attempt changes only how sharply the printed lines read.`,
+      `Preserve the printed label exactly as it appears in the reference photo: keep every existing line, including "${listTokens(notDetected)}", unchanged in wording, case, order, typeface and position. Do not re-typeset, restyle, duplicate, replace or add any lettering, and never substitute the brand name for a label line. Hold the product steady with the label facing the camera, unobstructed, one slow push-in, no cuts, flips or rotation.`,
     );
     reasons.push(`OCR did not detect: ${listTokens(notDetected)}`);
   }
@@ -293,6 +293,33 @@ export function adjustmentFromEvidence(
     );
     reasons.push(`OCR could not read: ${listTokens(unreadable)}`);
   }
+  // A retry may only say "keep the brand as it already appears" when the previous
+  // clip really read it. Otherwise the brand is what has to be corrected, and
+  // asking the model to preserve a wrong spelling would bake the error in.
+  const brandFindings = findings.filter((entry) => entry.kind === 'brand');
+  const brandHeld =
+    brandFindings.length > 0 &&
+    brandFindings.every((entry) => entry.finding === 'verified' || entry.finding === 'detected');
+
+  if (brandHeld) {
+    parts.push(
+      'Keep the brand name and the packaging exactly as they already appear in the previous clip: this attempt changes only how sharply the printed lines read.',
+    );
+  } else if (brandFindings.length > 0) {
+    const closest = brandFindings
+      .map((entry) => entry.bestReading)
+      .filter((reading): reading is string => Boolean(reading))
+      .slice(0, 3);
+    parts.push(
+      `The brand name must read exactly "${brandFindings
+        .map((entry) => entry.token)
+        .join(' ')}": correct any other reading of it, keep the packaging otherwise unchanged and make the printed label lines sharper.`,
+    );
+    reasons.push(
+      `Brand was not verified in the previous clip${closest.length ? ` (closest readings: ${closest.join(', ')})` : ''}`,
+    );
+  }
+
   if (parts.length === 0) {
     parts.push(
       'Increase label legibility: closer framing, slower camera movement, even lighting and minimal product motion so the printed text stays sharp throughout the clip.',

@@ -136,6 +136,101 @@ describe('catalog prompts', () => {
     expect(adjustment.reason).toContain('HYDRATING');
   });
 
+  it('only asks to keep the brand when the previous clip actually read it', () => {
+    const evidence: CompactEvidence = {
+      verdict: 'REVIEW',
+      headline: 'Needs a human check',
+      summary: '',
+      checks: [],
+      tokenEvidence: [
+        {
+          token: 'BOTANIKA',
+          kind: 'brand',
+          finding: 'verified',
+          bestReading: 'BOTANIKA',
+          bestSimilarity: 0.97,
+          hits: 8,
+          missing: 0,
+          unreadable: 0,
+        },
+        {
+          token: 'HYDRATING',
+          kind: 'label',
+          finding: 'not-detected',
+          bestReading: null,
+          bestSimilarity: 0.4,
+          hits: 0,
+          missing: 6,
+          unreadable: 0,
+        },
+      ],
+      frames: [],
+      metrics: {
+        sampledFrames: 12,
+        readableFrames: 11,
+        brandHits: 9,
+        labelHits: 0,
+        meanConfidence: 78,
+        readableFraction: 0.9,
+      },
+      limitations: [],
+    };
+
+    const adjustment = adjustmentFromEvidence(evidence, 2);
+    expect(adjustment.adjustment).toContain(
+      'Keep the brand name and the packaging exactly as they already appear',
+    );
+    expect(adjustment.adjustment).not.toContain('must read exactly');
+  });
+
+  it('asks for the brand to be corrected when the previous clip did not read it', () => {
+    const evidence: CompactEvidence = {
+      verdict: 'FAIL',
+      headline: 'Fidelity break detected',
+      summary: '',
+      checks: [],
+      tokenEvidence: [
+        {
+          token: 'BOTANIKA',
+          kind: 'brand',
+          finding: 'not-detected',
+          bestReading: 'BOTANKA',
+          bestSimilarity: 0.71,
+          hits: 0,
+          missing: 9,
+          unreadable: 0,
+        },
+        {
+          token: 'HYDRATING',
+          kind: 'label',
+          finding: 'not-detected',
+          bestReading: null,
+          bestSimilarity: 0.4,
+          hits: 0,
+          missing: 6,
+          unreadable: 0,
+        },
+      ],
+      frames: [],
+      metrics: {
+        sampledFrames: 12,
+        readableFrames: 10,
+        brandHits: 0,
+        labelHits: 0,
+        meanConfidence: 70,
+        readableFraction: 0.8,
+      },
+      limitations: [],
+    };
+
+    const adjustment = adjustmentFromEvidence(evidence, 2);
+    expect(adjustment.adjustment).toContain('must read exactly "BOTANIKA"');
+    expect(adjustment.adjustment).not.toContain(
+      'Keep the brand name and the packaging exactly as they already appear',
+    );
+    expect(adjustment.reason).toContain('Brand was not verified');
+  });
+
   it('never claims a specific miss when no evidence exists', () => {
     const adjustment = adjustmentFromEvidence(null, 2);
     expect(adjustment.adjustment).toContain('Increase label legibility');
