@@ -44,7 +44,7 @@ export function sceneById(id: SceneId): SceneDefinition {
 }
 
 export const DEFAULT_NEGATIVE_PROMPT =
-  'text artifacts, distorted lettering, gibberish text, misspelled brand name, extra labels, warped packaging, morphing logo, watermark, subtitles, captions, duplicate product, blurry label, low resolution, oversaturated, cartoon';
+  'text artifacts, distorted lettering, gibberish text, misspelled brand name, extra labels, warped packaging, morphing logo, watermark, subtitles, captions, duplicate product, blurry label, low resolution, oversaturated, cartoon, dense fine print, printed paragraphs, columns of text, page texture, text-covered packaging, newspaper';
 
 /**
  * Builds the editable generation prompt. It is intentionally explicit about
@@ -70,6 +70,10 @@ export function buildPrompt(sceneId: SceneId, brand: string, labelText: string):
       : 'Preserve the exact packaging shape, material, colour and proportions of the reference product.',
     labelInstruction,
     'Do not restyle, redraw, translate, extend or invent any label text, logo or typography.',
+    labelBlock
+      ? `That is the only printing on the packaging: "${labelBlock}". Everything else on the product surface is plain and unprinted — no extra words, fine print, paragraphs, columns of text, page-like texture, invented logos or certification marks.`
+      : 'The packaging carries no printed text beyond the brand name — no extra words, fine print, paragraphs, columns of text, page-like texture, invented logos or certification marks.',
+    'The printed label band occupies about a third of the package height; the packaging above and below it stays clean.',
     `Scene: ${scene.direction}.`,
     `Lighting: ${scene.lighting}.`,
     'Camera: one slow, controlled move (push-in with gentle parallax), product remaining in focus and occupying most of the frame, no camera shake.',

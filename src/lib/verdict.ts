@@ -25,6 +25,8 @@ import {
   formatPercent,
   matchTokens,
   minConfidenceFor,
+  normalizeText,
+  similarity,
   thresholdFor,
 } from './text';
 
@@ -551,6 +553,47 @@ export function buildReport(input: BuildReportInput): VerificationReport {
     };
   }
   checks.push(extraCheck);
+
+  // A frame can spell the required words and still be a fidelity break: one run
+  // rendered the label correctly but covered the packaging in a page of invented
+  // lettering, which no token-level check would notice.
+  const expectedWords = [...brandTokens, ...labelTokens];
+  const foreignWords = (frame: FrameSample): OcrWord[] => {
+    if (!frame.legible) return [];
+    return frame.words.filter((word) => {
+      const normalized = word.normalized || normalizeText(word.text);
+      if (normalized.length < 4) return false;
+      return !expectedWords.some((token) => similarity(normalized, token) >= threshold);
+    });
+  };
+  const loadLimit = Math.max(24, expectedWords.length * 8);
+  const overloadedFrames = readable.filter((frame) => foreignWords(frame).length >= loadLimit);
+  const worstForeign = readable.reduce(
+    (worst, frame) => Math.max(worst, foreignWords(frame).length),
+    0,
+  );
+  const foreignSamples = Array.from(
+    new Set(overloadedFrames.flatMap((frame) => foreignWords(frame).map((word) => word.text))),
+  )
+    .filter(Boolean)
+    .slice(0, 4)
+    .map((word) => `“${word}”`)
+    .join(', ');
+  const overloadShare = readableCount > 0 ? overloadedFrames.length / readableCount : 0;
+  const overloaded = overloadShare >= 0.3 && overloadedFrames.length >= 2;
+
+  checks.push({
+    id: 'lettering-load',
+    title: 'Packaging not re-lettered',
+    status: overloaded ? 'fail' : overloadedFrames.length === 1 ? 'review' : 'pass',
+    critical: true,
+    detail: overloaded
+      ? `The render adds far more lettering than the label holds: ${worstForeign} unrelated word readings in a single frame against ${expectedWords.length} expected (${foreignSamples}). This is invented text covering the packaging, not the printed label, so the clip is treated as a fidelity break even where the required words were spelled correctly.`
+      : overloadedFrames.length === 1
+        ? `One frame carried ${worstForeign} unrelated word readings against ${expectedWords.length} expected (${foreignSamples}). A single frame is not enough to call invented lettering, so this needs a human look.`
+        : `No frame carried more than ${loadLimit - 1} unrelated word readings against ${expectedWords.length} expected, so the packaging was not re-lettered.`,
+    metric: `${overloadedFrames.length} / ${readableCount} readable frames`,
+  });
 
   let legibilityStatus: CheckStatus = 'review';
   if (readableFraction >= 0.7 && meanConfidence >= 55) legibilityStatus = 'pass';
