@@ -579,7 +579,7 @@ export function CatalogPanel() {
         <div>
           <h2 className="cat__title">Run a label-fidelity pilot across a catalog</h2>
           <p className="cat__lede">
-            Up to {settings?.maxProducts ?? 8} products in one run: each gets a clip from the bundled LTX-2.3 workflow
+            Up to {settings?.maxProducts ?? 2} products in one run: each gets a clip from the bundled LTX-2.3 workflow
             on Comfy Cloud, verified against its own photo by the studio&apos;s OCR evidence.
           </p>
           <p className="cat__lede">
@@ -817,7 +817,7 @@ export function CatalogPanel() {
             <button
               type="button"
               className="btn btn--subtle btn--sm"
-              disabled={busy || rows.length >= (settings?.maxProducts ?? 8)}
+              disabled={busy || rows.length >= (settings?.maxProducts ?? 2)}
               onClick={() => setRows((previous) => [...previous, newRow()])}
             >
               Add product

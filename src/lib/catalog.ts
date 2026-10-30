@@ -19,7 +19,7 @@ export const MAX_CONCURRENCY = 4;
 // run, so a judge does not hit a planning limit mid-demo.
 export const DEFAULT_BUDGET_CREDITS = 60;
 export const DEFAULT_ESTIMATE_CREDITS = 1;
-export const MAX_PRODUCTS = 8;
+export const MAX_PRODUCTS = 2;
 
 export type CatalogProductStatus =
   | 'queued'

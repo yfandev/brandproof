@@ -25,7 +25,7 @@ export const MAX_CONCURRENCY = 4;
 export const DEFAULT_CONCURRENCY = 3;
 export const DEFAULT_BUDGET_CREDITS = 60;
 export const MAX_BUDGET_CREDITS = 400;
-export const MAX_PRODUCTS = 8;
+export const MAX_PRODUCTS = 2;
 export const SAFETY_MARGIN = 0.15;
 // Planning credits for a whole day of demo runs: 150 credits is roughly 43
 // attempts' worth, enough for repeated judge walkthroughs while still bounded.
