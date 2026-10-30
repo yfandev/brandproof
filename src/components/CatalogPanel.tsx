@@ -584,11 +584,15 @@ export function CatalogPanel() {
             Products run concurrently, and every attempt reserves budget on the server before it starts.
           </p>
           <p className="cat__lede">
-            The goal is a clip that is <em>proven</em>, not a verdict to hand off. A <strong>FAIL</strong> or{' '}
-            <strong>REVIEW</strong> sends the product back through generation with its prompt rewritten from that
-            attempt&apos;s own OCR evidence — up to {settings?.retryLimit ?? MAX_ATTEMPTS_PER_PRODUCT} attempts. If no
-            attempt proves the label, the product ends as <strong>Needs human review</strong> with its strongest attempt
-            shown as best evidence: retries aim for proof, and REVIEW never counts as approval.
+            Every clip is judged by the studio&apos;s own PASS / REVIEW / FAIL rules, and <strong>PASS</strong> is the
+            only approval. A <strong>FAIL</strong> or <strong>REVIEW</strong> sends the product back through generation
+            with its prompt rewritten from that attempt&apos;s own OCR evidence, up to{' '}
+            {settings?.retryLimit ?? MAX_ATTEMPTS_PER_PRODUCT} attempts per product. When those attempts run out without
+            a PASS, the product ends as <strong>Needs human review</strong> with its strongest attempt shown as best
+            evidence — the loop aims at proof but cannot manufacture one, and REVIEW is never promoted. A product can
+            also end earlier, still unapproved, as <strong>Error</strong>, <strong>Interrupted</strong> or{' '}
+            <strong>Budget limited</strong> when a generation fails, a Comfy job outlives the wait, or the budget refuses
+            the next attempt; its card records which one and why.
           </p>
           <details className="cat-notes">
             <summary>How the automatic retry loop works</summary>
