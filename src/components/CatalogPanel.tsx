@@ -580,8 +580,7 @@ export function CatalogPanel() {
           <h2 className="cat__title">Run a label-fidelity pilot across a catalog</h2>
           <p className="cat__lede">
             Up to {settings?.maxProducts ?? 8} products at once: each gets a clip from the bundled LTX-2.3 workflow
-            on Comfy Cloud, verified against its own photo by the studio&apos;s OCR evidence. Products run in parallel,
-            and every attempt reserves budget on the server before it starts.
+            on Comfy Cloud, verified against its own photo by the studio&apos;s OCR evidence.
           </p>
           <p className="cat__lede">
             Verification drives the run, not the other way round. A <strong>FAIL</strong> or <strong>REVIEW</strong>{' '}
