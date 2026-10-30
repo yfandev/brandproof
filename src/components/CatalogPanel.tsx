@@ -47,7 +47,6 @@ import {
 } from '../lib/catalogRunner';
 import { verifyGeneratedClip } from '../lib/catalogVerify';
 import { loadReferenceImage } from '../lib/image';
-import { labelFeasibility, medianLineHeightPx } from '../lib/labelFeasibility';
 import { recognizeCanvas } from '../lib/ocr';
 import { groupLines } from '../lib/text';
 import { downloadText, reportToJson } from '../lib/report';
@@ -65,8 +64,6 @@ interface Row {
   previewUrl: string | null;
   canvas: HTMLCanvasElement | null;
   error: string | null;
-  /** Measured legibility of the printed lines, once the photo has been scanned. */
-  feasibility?: ReturnType<typeof labelFeasibility>;
 }
 
 type Filter = 'all' | 'approved' | 'needs-review' | 'running' | 'budget-limited' | 'error';
@@ -237,11 +234,6 @@ export function CatalogPanel() {
       const lines = groupLines(result.words)
         .filter((line) => line.text.replace(/[^a-zA-Z0-9]/g, '').length >= 2)
         .slice(0, 10);
-      updateRow(row.id, {
-        feasibility: labelFeasibility(medianLineHeightPx(result.words, row.canvas.height), {
-          photoHeightPx: row.canvas.height,
-        }),
-      });
       setScans((previous) => ({
         ...previous,
         [row.id]: {
@@ -787,14 +779,6 @@ export function CatalogPanel() {
                       {scans[row.id]?.status === 'running' ? 'Scanning…' : 'Scan photo'}
                     </button>
                   </div>
-
-                  {row.feasibility && row.feasibility.status !== 'ok' && (
-                    <p
-                      className={`micro ${row.feasibility.status === 'hopeless' ? 'micro--warn' : ''}`}
-                    >
-                      Label legibility: {row.feasibility.message}
-                    </p>
-                  )}
 
                   {scans[row.id]?.status === 'error' && (
                     <p className="micro micro--warn">Could not read this photo: {scans[row.id]?.error}</p>
