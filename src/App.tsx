@@ -371,7 +371,7 @@ export default function App() {
               Catalog pilot
             </button>
           </div>
-          <span className="hackbadge">Comfy OSS × Higgsfield</span>
+          <span className="hackbadge">Comfy open-source build</span>
           {mode === 'studio' && (
             <button type="button" className="btn btn--subtle btn--sm" onClick={reset}>
               Reset session
@@ -516,8 +516,8 @@ export default function App() {
           <div className="footer__brand">
             <p className="footer__mark">BrandProof</p>
             <p className="micro">
-              Automated label-consistency verification for AI product ads. Built for the Comfy Open Source × Higgsfield
-              hackathon.
+              Automated label-consistency verification for AI product ads. An open-source build on the Comfy developer
+              platform.
             </p>
           </div>
           <div className="footer__meta">
