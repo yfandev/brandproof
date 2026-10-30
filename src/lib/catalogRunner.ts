@@ -5,7 +5,6 @@ import {
   adjustmentFromEvidence,
   composeAttemptPrompt,
   isTerminal,
-  labelNeedsCloseUp,
   newCatalogId,
   pickBestAttempt,
   summariseReport,
@@ -19,19 +18,6 @@ export interface CatalogRuntimeProduct {
   image: File;
   reference: { canvas: HTMLCanvasElement } | null;
   basePrompt: string;
-  /**
-   * Closer framing of the same package, used after an attempt could not verify
-   * the printed text. It keeps the product on screen, unlike a label-only crop.
-   */
-  labelReference?: File | null;
-  /**
-   * Measured legibility of the printed lines in the generated frame. When the
-   * estimate says the model cannot reproduce letters, a closer crop would only
-   * buy nonsense output and lose the pack shot, so the product photo is kept.
-   */
-  labelFeasibility?: { status: 'ok' | 'marginal' | 'hopeless'; renderPx: number } | null;
-  /** Same product with its label re-drawn from the text read in the photo. */
-  labelRendered?: File | null;
 }
 
 /** How long a single Comfy Cloud job may hold a product attempt open. */
@@ -58,12 +44,6 @@ export function describeCloudJob(job: CloudJob, elapsedMs: number): string {
   parts.push(`${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`);
   return parts.join(' · ');
 }
-
-const LABEL_RENDERED_NOTE =
-  'The reference image is the same product with its printed label re-drawn from the text read in the photo, so the lettering is legible at the size it occupies on the pack. Keep that lettering exactly where it sits and spelled as drawn, facing the camera, and never add, duplicate, restyle or invent any other printing. Show the entire package — cap, base and both sides — and keep the surrounding surface plain.';
-
-const CLOSE_UP_NOTE =
-  'The reference image is the same product framed closer, cropped from the product photo. Keep the entire package in frame — cap, base and both sides visible — and never replace it with a flat label, a label graphic, a colour swatch or rows of repeated lettering. Reproduce the printed label exactly as printed, facing the camera, with no added, duplicated or restyled lettering. Pull the camera back so the whole bottle fills roughly half of the frame height: this is a product hero shot, not a macro of the label. Keep the packaging surface plain around the printed lines — no paragraphs, fine print or columns of text.';
 
 export interface CatalogRunnerDeps {
   /** Server-side budget gate. Must be called before one generation attempt. */
@@ -245,25 +225,14 @@ export async function runCatalog(options: RunCatalogOptions): Promise<CatalogRun
 
     while (job.attempts.length < maxAttempts) {
       const attemptIndex = job.attempts.length + 1;
-      const previous = job.attempts[job.attempts.length - 1] ?? null;
-      // Once the label could not be verified, send a closer framing of the whole
-      // package so the printed line gets enough pixels without losing the bottle.
-      const needsLabelHelp = labelNeedsCloseUp(previous?.evidence ?? null);
-      // Best retry reference: the product with its label re-drawn from the text
-      // OCR read, so the pack shot survives and the letters are legible.
-      const useRendered = Boolean(product.labelRendered) && needsLabelHelp;
-      const closeUpBlocked = product.labelFeasibility?.status === 'hopeless';
-      const useCloseUp =
-        !useRendered && Boolean(product.labelReference) && !closeUpBlocked && needsLabelHelp;
-      const image = useRendered
-        ? (product.labelRendered as File)
-        : useCloseUp
-          ? (product.labelReference as File)
-          : product.image;
-      const referenceNote = useRendered ? LABEL_RENDERED_NOTE : useCloseUp ? CLOSE_UP_NOTE : '';
-      const prompt =
-        composeAttemptPrompt(product.basePrompt, pendingAdjustment) +
-        (referenceNote ? `\n\n${referenceNote}` : '');
+      // The reference is always the real product photo. Two synthesised
+      // references were tried and both made the render worse: a label-only crop
+      // replaced the bottle with a label graphic, and re-drawing the label from
+      // OCR text made the model paint that lettering over the whole surface. A
+      // retry therefore changes only the prompt, and verification reports what
+      // the render actually shows.
+      const image = product.image;
+      const prompt = composeAttemptPrompt(product.basePrompt, pendingAdjustment);
       const attempt: CatalogAttempt = {
         id: newCatalogId('att'),
         index: attemptIndex,
@@ -280,17 +249,11 @@ export async function runCatalog(options: RunCatalogOptions): Promise<CatalogRun
         error: null,
         videoName: null,
         reservationState: null,
-        referenceImage: useRendered ? 'label-rendered' : useCloseUp ? 'product-close-up' : 'product',
+        referenceImage: 'product',
       };
       job.attempts.push(attempt);
       job.status = 'generating';
-      job.message = `Attempt ${attemptIndex} of ${maxAttempts} · generating clip${
-        useRendered
-          ? ' from a label reference read from the photo'
-          : useCloseUp
-            ? ' from a closer product framing'
-            : ''
-      }`;
+      job.message = `Attempt ${attemptIndex} of ${maxAttempts} · generating clip from the product photo`;
       emit();
 
       let granted: { granted: boolean; reason: string | null; credits: number };

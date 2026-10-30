@@ -340,71 +340,31 @@ describe('catalog runner', () => {
     expect(recorder.generateCalls).toHaveLength(0);
   });
 
-  it('sends a closer product framing on the retry when the label could not be verified', async () => {
+  it('sends the real product photo on every attempt', async () => {
     const job = product('p1');
-    const runtime = runtimeOf([job]);
-    runtime.get(job.id)!.labelReference = new File([new Uint8Array([9])], 'label.png', {
-      type: 'image/png',
-    });
     const { deps, recorder } = depsFor({
-      verify: (_job, attempt) => (attempt === 1 ? report('REVIEW') : report('PASS')),
+      verify: (_job, attempt) => (attempt === 1 ? report('REVIEW') : report('FAIL')),
     });
 
-    await runCatalog({ run: runOf([job]), runtime, deps });
+    await runCatalog({ run: runOf([job]), runtime: runtimeOf([job]), deps });
 
-    expect(recorder.generateCalls[0].imageName).toBe('p1.png');
-    expect(recorder.generateCalls[1].imageName).toBe('label.png');
-    expect(job.attempts[1].referenceImage).toBe('product-close-up');
-    expect(job.attempts[1].prompt).toContain('framed closer');
-    expect(job.attempts[1].prompt).toContain('Keep the entire package in frame');
-    expect(job.status).toBe('approved');
+    expect(recorder.generateCalls.map((call) => call.imageName)).toEqual([
+      'p1.png',
+      'p1.png',
+      'p1.png',
+    ]);
+    expect(job.attempts.every((attempt) => attempt.referenceImage === 'product')).toBe(true);
   });
 
-  it('sends the label re-drawn from the photo text when the label could not be verified', async () => {
+  it('never regenerates a product that passes on attempt 1', async () => {
     const job = product('p1');
-    const runtime = runtimeOf([job]);
-    runtime.get(job.id)!.labelRendered = new File([new Uint8Array([7])], 'read.png', {
-      type: 'image/png',
-    });
-    const { deps, recorder } = depsFor({
-      verify: (_job, attempt) => (attempt === 1 ? report('REVIEW') : report('PASS')),
-    });
-
-    await runCatalog({ run: runOf([job]), runtime, deps });
-
-    expect(recorder.generateCalls[1].imageName).toBe('read.png');
-    expect(job.attempts[1].referenceImage).toBe('label-rendered');
-    expect(job.attempts[1].prompt).toContain('re-drawn from the text read in the photo');
-  });
-
-  it('keeps the product photo when the printed label measures too small to render', async () => {
-    const job = product('p1');
-    const runtime = runtimeOf([job]);
-    const entry = runtime.get(job.id)!;
-    entry.labelReference = new File([new Uint8Array([9])], 'label.png', { type: 'image/png' });
-    entry.labelFeasibility = { status: 'hopeless', renderPx: 7 };
-    const { deps, recorder } = depsFor({
-      verify: (_job, attempt) => (attempt === 1 ? report('REVIEW') : report('PASS')),
-    });
-
-    await runCatalog({ run: runOf([job]), runtime, deps });
-
-    expect(recorder.generateCalls[1].imageName).toBe('p1.png');
-    expect(job.attempts[1].referenceImage).toBe('product');
-  });
-
-  it('keeps the product photo when the label was verified', async () => {
-    const job = product('p1');
-    const runtime = runtimeOf([job]);
-    runtime.get(job.id)!.labelReference = new File([new Uint8Array([9])], 'label.png', {
-      type: 'image/png',
-    });
     const { deps, recorder } = depsFor({ verify: () => report('PASS') });
 
-    await runCatalog({ run: runOf([job]), runtime, deps });
+    await runCatalog({ run: runOf([job]), runtime: runtimeOf([job]), deps });
 
     expect(recorder.generateCalls).toHaveLength(1);
     expect(recorder.generateCalls[0].imageName).toBe('p1.png');
+    expect(job.attempts).toHaveLength(1);
     expect(job.attempts[0].referenceImage).toBe('product');
   });
 
