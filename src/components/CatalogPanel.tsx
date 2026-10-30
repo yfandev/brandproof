@@ -47,6 +47,7 @@ import {
 } from '../lib/catalogRunner';
 import { verifyGeneratedClip } from '../lib/catalogVerify';
 import { loadReferenceImage } from '../lib/image';
+import { labelFeasibility, medianLineHeightPx } from '../lib/labelFeasibility';
 import {
   retryReferenceFile,
   retryReferenceRegion,
@@ -70,6 +71,8 @@ interface Row {
   previewUrl: string | null;
   canvas: HTMLCanvasElement | null;
   error: string | null;
+  /** Measured legibility of the printed lines, once the photo has been scanned. */
+  feasibility?: ReturnType<typeof labelFeasibility>;
 }
 
 type Filter = 'all' | 'approved' | 'needs-review' | 'running' | 'budget-limited' | 'error';
@@ -240,6 +243,11 @@ export function CatalogPanel() {
       const lines = groupLines(result.words)
         .filter((line) => line.text.replace(/[^a-zA-Z0-9]/g, '').length >= 2)
         .slice(0, 10);
+      updateRow(row.id, {
+        feasibility: labelFeasibility(medianLineHeightPx(result.words, row.canvas.height), {
+          photoHeightPx: row.canvas.height,
+        }),
+      });
       setScans((previous) => ({
         ...previous,
         [row.id]: {
@@ -333,6 +341,7 @@ export function CatalogPanel() {
       // Every product with label text gets a closer framing of the same package,
       // used only when an attempt fails to verify that text.
       const labelReferences = new Map<string, File | null>();
+      const feasibilities = new Map<string, ReturnType<typeof labelFeasibility>>();
       await Promise.all(
         rows.map(async (row) => {
           if (!row.canvas || !row.labelText.trim()) return;
@@ -343,6 +352,12 @@ export function CatalogPanel() {
               subject: subjectRegion(row.canvas),
             });
             labelReferences.set(row.id, await retryReferenceFile(row.canvas, region, row.name));
+            feasibilities.set(
+              row.id,
+              labelFeasibility(medianLineHeightPx(scan.words, row.canvas.height), {
+                photoHeightPx: row.canvas.height,
+              }),
+            );
           } catch {
             labelReferences.set(row.id, null);
           }
@@ -355,6 +370,7 @@ export function CatalogPanel() {
           image: row.file as File,
           reference: row.canvas ? { canvas: row.canvas } : null,
           labelReference: labelReferences.get(row.id) ?? null,
+          labelFeasibility: feasibilities.get(row.id) ?? null,
           basePrompt: buildCatalogPrompt(
             {
               id: row.id,
@@ -805,6 +821,14 @@ export function CatalogPanel() {
                       {scans[row.id]?.status === 'running' ? 'Scanning…' : 'Scan photo'}
                     </button>
                   </div>
+
+                  {row.feasibility && row.feasibility.status !== 'ok' && (
+                    <p
+                      className={`micro ${row.feasibility.status === 'hopeless' ? 'micro--warn' : ''}`}
+                    >
+                      Label legibility: {row.feasibility.message}
+                    </p>
+                  )}
 
                   {scans[row.id]?.status === 'error' && (
                     <p className="micro micro--warn">Could not read this photo: {scans[row.id]?.error}</p>

@@ -24,6 +24,12 @@ export interface CatalogRuntimeProduct {
    * the printed text. It keeps the product on screen, unlike a label-only crop.
    */
   labelReference?: File | null;
+  /**
+   * Measured legibility of the printed lines in the generated frame. When the
+   * estimate says the model cannot reproduce letters, a closer crop would only
+   * buy nonsense output and lose the pack shot, so the product photo is kept.
+   */
+  labelFeasibility?: { status: 'ok' | 'marginal' | 'hopeless'; renderPx: number } | null;
 }
 
 /** How long a single Comfy Cloud job may hold a product attempt open. */
@@ -237,7 +243,9 @@ export async function runCatalog(options: RunCatalogOptions): Promise<CatalogRun
       const previous = job.attempts[job.attempts.length - 1] ?? null;
       // Once the label could not be verified, send a closer framing of the whole
       // package so the printed line gets enough pixels without losing the bottle.
-      const useCloseUp = Boolean(product.labelReference) && labelNeedsCloseUp(previous?.evidence ?? null);
+      const closeUpBlocked = product.labelFeasibility?.status === 'hopeless';
+      const useCloseUp =
+        Boolean(product.labelReference) && !closeUpBlocked && labelNeedsCloseUp(previous?.evidence ?? null);
       const image = useCloseUp ? (product.labelReference as File) : product.image;
       const prompt = composeAttemptPrompt(product.basePrompt, pendingAdjustment) +
         (useCloseUp ? `\n\n${CLOSE_UP_NOTE}` : '');
