@@ -3334,6 +3334,12 @@ select.input {
 }
 .cat-intake__head h3 { margin: 0; font-size: 15px; letter-spacing: -0.01em; color: var(--cat-text); }
 
+.cat-intake__foot {
+  display: flex;
+  justify-content: flex-start;
+  padding-top: 2px;
+}
+
 .cat-row {
   border: 1px solid var(--cat-line);
   border-radius: 13px;

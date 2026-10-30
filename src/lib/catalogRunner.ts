@@ -399,9 +399,18 @@ export async function runCatalog(options: RunCatalogOptions): Promise<CatalogRun
       if (job.attempts.length >= maxAttempts) {
         const best = syncBest(job);
         job.status = 'needs-review';
-        job.message = `No attempt reached PASS in ${maxAttempts}. Best evidence is attempt ${
-          best?.index ?? '—'
-        } (${best?.verdict ?? 'no verdict'}), not the last attempt — open its clip and evidence below. ${report.headline}`;
+        const bestIndex = best?.index ?? null;
+        const bestVerdict = best?.verdict ?? 'no verdict';
+        // Only point out that the best attempt is not the newest one when that is
+        // actually true; with two attempts the best is often the last, and saying
+        // "not the last attempt" about the last attempt reads as a bug.
+        const bestNote =
+          bestIndex === null
+            ? 'Best evidence is not available — open the attempts below.'
+            : bestIndex === job.attempts.length
+              ? `Best evidence is attempt ${bestIndex} (${bestVerdict}) — open its clip and evidence below.`
+              : `Best evidence is attempt ${bestIndex} (${bestVerdict}), not the last attempt — open its clip and evidence below.`;
+        job.message = `No attempt reached PASS in ${maxAttempts} attempts. ${bestNote} ${report.headline}`;
         finishProduct(job);
         emit();
         return;
