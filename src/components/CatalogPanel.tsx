@@ -17,9 +17,11 @@ import {
   emptyDraft,
   isTerminal,
   newCatalogId,
+  pickBestAttempt,
   restoreFromSnapshot,
   runToCsv,
   runToExportJson,
+  summariseReport,
   toSnapshot,
   validateDrafts,
   validateRunConfig,
@@ -37,7 +39,12 @@ import {
   settleCatalogAttempt,
   type CatalogSettings,
 } from '../lib/catalogApi';
-import { runCatalog, type CatalogRuntimeProduct } from '../lib/catalogRunner';
+import {
+  CATALOG_JOB_TIMEOUT_MS,
+  describeCloudJob,
+  runCatalog,
+  type CatalogRuntimeProduct,
+} from '../lib/catalogRunner';
 import { verifyGeneratedClip } from '../lib/catalogVerify';
 import { loadReferenceImage } from '../lib/image';
 import {
@@ -137,6 +144,8 @@ export function CatalogPanel() {
   const [filter, setFilter] = useState<Filter>('all');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [verifyNote, setVerifyNote] = useState<string | null>(null);
+  /** Attempt id of a Comfy job being re-checked, so the button cannot double-fire. */
+  const [resuming, setResuming] = useState<string | null>(null);
   /** Keyed by attempt id, so every attempt keeps its own clip. */
   const [clips, setClips] = useState<Record<string, { url: string; name: string }>>({});
   /** productId → attempt id of the newest clip, used for the card preview. */
@@ -145,6 +154,8 @@ export function CatalogPanel() {
 
   const reports = useRef(new Map<string, VerificationReport>());
   const runRef = useRef<CatalogRun | null>(null);
+  /** Kept so a resumed attempt can still compare against the reference photo. */
+  const runtimeRef = useRef(new Map<string, CatalogRuntimeProduct>());
   const clipUrls = useRef<string[]>([]);
 
   const workflow = useMemo(() => parseWorkflowJson(DEFAULT_WORKFLOW_TEXT), []);
@@ -364,6 +375,8 @@ export function CatalogPanel() {
         });
       });
 
+      runtimeRef.current = runtime;
+
       const nextRun: CatalogRun = {
         id: runId,
         createdAt: new Date().toISOString(),
@@ -399,7 +412,7 @@ export function CatalogPanel() {
           settle: async ({ runId: id, attemptId, outcome }) => {
             await settleCatalogAttempt({ runId: id, attemptId, outcome });
           },
-          generate: async ({ image, prompt, attemptId, onJobId }) => {
+          generate: async ({ image, prompt, attemptId, onJobId, onProgress }) => {
             const submitted = await generateCloudVideo({
               image,
               workflowText: workflow.ok ? workflow.parsed.apiWorkflowText : '',
@@ -408,7 +421,12 @@ export function CatalogPanel() {
               idempotencyKey: attemptId,
             });
             onJobId(submitted.jobId);
-            const finished = await waitForCloudVideo(submitted.jobId, { onJob: () => undefined });
+            onProgress?.(describeCloudJob(submitted.job, 0));
+            const finished = await waitForCloudVideo(submitted.jobId, {
+              pollMs: 3000,
+              timeoutMs: CATALOG_JOB_TIMEOUT_MS,
+              onJob: (job, elapsed) => onProgress?.(describeCloudJob(job, elapsed)),
+            });
             const video = await downloadCloudVideo(finished.id);
             return { blob: video.blob, filename: video.filename, jobId: finished.id };
           },
@@ -445,6 +463,95 @@ export function CatalogPanel() {
       setFormError(readError(error));
     } finally {
       setStarting(false);
+    }
+  };
+
+  /**
+   * Reattaches to a Comfy job that an attempt already submitted, then downloads
+   * and verifies it. No new generation is requested, so a long queue or a
+   * timed-out wait can be recovered without spending the credits again.
+   */
+  const resumeAttempt = async (productId: string, attemptId: string) => {
+    const active = runRef.current;
+    const product = active?.products.find((entry) => entry.id === productId);
+    const attempt = product?.attempts.find((entry) => entry.id === attemptId);
+    if (!active || !product || !attempt?.jobId) return;
+    if (attempt.verdict || attempt.videoName) return;
+
+    setResuming(attemptId);
+    setVerifyNote(`${product.name} · re-checking Comfy job ${attempt.jobId}`);
+    try {
+      const finished = await waitForCloudVideo(attempt.jobId, {
+        pollMs: 3000,
+        timeoutMs: CATALOG_JOB_TIMEOUT_MS,
+        onJob: (job, elapsed) => {
+          const line = describeCloudJob(job, elapsed);
+          product.status = 'generating';
+          product.message = `Attempt ${attempt.index} · ${line}`;
+          setVerifyNote(`${product.name} · ${line}`);
+        },
+      });
+      const video = await downloadCloudVideo(finished.id);
+      const url = URL.createObjectURL(video.blob);
+      clipUrls.current.push(url);
+
+      attempt.jobId = finished.id;
+      attempt.videoName = video.filename;
+      product.videoName = video.filename;
+      product.status = 'verifying';
+      product.message = `Attempt ${attempt.index} · running OCR on the resumed MP4`;
+      setClips((previous) => ({ ...previous, [attemptId]: { url, name: video.filename } }));
+      setLatestClip((previous) => ({ ...previous, [productId]: attemptId }));
+      setRun({ ...active });
+
+      const report = await verifyGeneratedClip({
+        blob: video.blob,
+        filename: video.filename,
+        product: { reference: runtimeRef.current.get(productId)?.reference ?? null },
+        brand: product.brand,
+        labelText: product.labelText,
+        config: active.config,
+        sourceUrl: `/api/comfy/jobs/${encodeURIComponent(finished.id)}/video`,
+        onProgress: (progress) => setVerifyNote(`${product.name} · ${progress.message}`),
+      });
+
+      reports.current.set(productId, report);
+      attempt.verdict = report.verdict;
+      attempt.headline = report.headline;
+      attempt.evidence = summariseReport(report);
+      attempt.finishedAt = new Date().toISOString();
+      product.evidence = attempt.evidence;
+
+      try {
+        await settleCatalogAttempt({ runId: active.id, attemptId, outcome: 'used' });
+        attempt.reservationState = 'settled';
+      } catch {
+        // The credits were already spent; a failed settlement must not hide the verdict.
+      }
+
+      if (report.verdict === 'PASS') {
+        product.status = 'approved';
+        product.approvedAttemptId = attempt.id;
+        product.bestAttemptId = attempt.id;
+        product.message = `Approved on attempt ${attempt.index}: ${report.headline}`;
+      } else {
+        const best = pickBestAttempt(product.attempts);
+        product.bestAttemptId = best?.id ?? null;
+        if (best?.evidence) product.evidence = best.evidence;
+        product.status = 'needs-review';
+        product.message = `Resumed Comfy job ${finished.id} came back ${report.verdict}: ${report.headline}`;
+      }
+      product.finishedAt = attempt.finishedAt;
+      runRef.current = { ...active };
+      setRun({ ...active });
+      persist({ ...active });
+    } catch (error) {
+      attempt.error = readError(error);
+      setRun({ ...active });
+      persist({ ...active });
+    } finally {
+      setResuming(null);
+      setVerifyNote(null);
     }
   };
 
@@ -1148,6 +1255,16 @@ export function CatalogPanel() {
                                 <p className="micro">Basis: {attempt.adjustmentReason}</p>
                               )}
                               {attempt.error && <p className="micro micro--warn">{attempt.error}</p>}
+                              {attempt.jobId && !attempt.videoName && !attempt.verdict && (
+                                <button
+                                  type="button"
+                                  className="btn btn--subtle btn--sm"
+                                  disabled={resuming === attempt.id}
+                                  onClick={() => void resumeAttempt(product.id, attempt.id)}
+                                >
+                                  {resuming === attempt.id ? 'Re-checking…' : 'Re-check this Comfy job'}
+                                </button>
+                              )}
                               {attempt.evidence && (
                                 <>
                                   <p className="micro">
