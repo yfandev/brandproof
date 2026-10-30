@@ -24,7 +24,7 @@ describe('labelFeasibility', () => {
     expect(result.renderPx).toBeLessThan(10);
     expect(result.status).toBe('hopeless');
     expect(result.message).toContain('paint plausible-looking text');
-    expect(result.message).toContain('re-draw the label from the text read here');
+    expect(result.message).toContain('the only way to make this check passable');
   });
 
   it('calls a marginal line marginal', () => {

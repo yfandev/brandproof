@@ -48,13 +48,6 @@ import {
 import { verifyGeneratedClip } from '../lib/catalogVerify';
 import { loadReferenceImage } from '../lib/image';
 import { labelFeasibility, medianLineHeightPx } from '../lib/labelFeasibility';
-import { labelOverlayLines, labelReferenceFile } from '../lib/labelReference';
-import {
-  retryReferenceFile,
-  retryReferenceRegion,
-  subjectRegion,
-  textBlockRegion,
-} from '../lib/labelCrop';
 import { recognizeCanvas } from '../lib/ocr';
 import { groupLines } from '../lib/text';
 import { downloadText, reportToJson } from '../lib/report';
@@ -339,55 +332,11 @@ export function CatalogPanel() {
         ...config,
         maxAttempts: settings.retryLimit,
       };
-      // Every product with label text gets a closer framing of the same package,
-      // used only when an attempt fails to verify that text.
-      const labelReferences = new Map<string, File | null>();
-      const labelRenderedRefs = new Map<string, File | null>();
-      const feasibilities = new Map<string, ReturnType<typeof labelFeasibility>>();
-      await Promise.all(
-        rows.map(async (row) => {
-          if (!row.canvas || !row.labelText.trim()) return;
-          try {
-            const scan = await recognizeCanvas(row.canvas, { autoRegion: true, thorough: false });
-            const region = retryReferenceRegion({
-              text: textBlockRegion(scan.words),
-              subject: subjectRegion(row.canvas),
-            });
-            labelReferences.set(row.id, await retryReferenceFile(row.canvas, region, row.name));
-            feasibilities.set(
-              row.id,
-              labelFeasibility(medianLineHeightPx(scan.words, row.canvas.height), {
-                photoHeightPx: row.canvas.height,
-              }),
-            );
-            // Rebuild the label from the text that was actually read, so a retry
-            // hands the model letters instead of ten-pixel guesswork.
-            const overlay = labelOverlayLines(scan.words);
-            labelRenderedRefs.set(
-              row.id,
-              overlay.length > 0
-                ? await labelReferenceFile(
-                    row.canvas,
-                    region ?? { x: 0, y: 0, w: 1, h: 1 },
-                    overlay,
-                    row.name,
-                  )
-                : null,
-            );
-          } catch {
-            labelReferences.set(row.id, null);
-          }
-        }),
-      );
-
       const runtime = new Map<string, CatalogRuntimeProduct>();
       const products: CatalogProductJob[] = rows.map((row) => {
         runtime.set(row.id, {
           image: row.file as File,
           reference: row.canvas ? { canvas: row.canvas } : null,
-          labelReference: labelReferences.get(row.id) ?? null,
-          labelFeasibility: feasibilities.get(row.id) ?? null,
-          labelRendered: labelRenderedRefs.get(row.id) ?? null,
           basePrompt: buildCatalogPrompt(
             {
               id: row.id,

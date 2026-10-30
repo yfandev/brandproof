@@ -75,6 +75,6 @@ export function labelFeasibility(
     photoPx,
     renderPx,
     status: 'hopeless',
-    message: `Printed lines measure about ${photoPx} px in this photo, roughly ${renderPx} px in a ${renderHeightPx}p clip — below the ~${MIN_RENDER_TEXT_PX} px where a video model starts reproducing letters, so it will paint plausible-looking text instead. The first attempt uses the photo as-is; retries re-draw the label from the text read here, so the model gets legible letters instead of ten-pixel guesswork. A photo where the label fills more of the frame makes the first attempt passable too.`,
+    message: `Printed lines measure about ${photoPx} px in this photo, roughly ${renderPx} px in a ${renderHeightPx}p clip — below the ~${MIN_RENDER_TEXT_PX} px where a video model starts reproducing letters, so it will paint plausible-looking text instead. Retries change only the prompt, so the render is expected to invent this lettering; a photo where the label fills more of the frame is the only way to make this check passable.`,
   };
 }
