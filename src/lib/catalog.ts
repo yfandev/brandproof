@@ -142,7 +142,7 @@ export interface CatalogAttempt {
   videoName: string | null;
   reservationState: 'granted' | 'denied' | 'released' | 'settled' | null;
   /** Which image was sent to the video model for this attempt. */
-  referenceImage?: 'product' | 'label-close-up';
+  referenceImage?: 'product' | 'product-close-up';
 }
 
 export interface CatalogProductJob {
@@ -411,9 +411,9 @@ export function attemptScore(attempt: Pick<CatalogAttempt, 'verdict' | 'evidence
 
 /**
  * True when the last attempt failed to verify label text: not found, unreadable
- * or read as different letters. The next attempt then sends a close-up of the
- * label instead of the whole product, because the fine print is too small to
- * survive at the workflow's output resolution.
+ * or read as different letters. The next attempt then sends a closer framing of
+ * the same package instead of the wide product shot, because the fine print is
+ * too small to survive at the workflow's output resolution.
  */
 export function labelNeedsCloseUp(evidence: CompactEvidence | null): boolean {
   if (!evidence) return false;

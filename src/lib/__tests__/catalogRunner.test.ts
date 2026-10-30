@@ -337,7 +337,7 @@ describe('catalog runner', () => {
     expect(recorder.generateCalls).toHaveLength(0);
   });
 
-  it('sends a label close-up on the retry when the label could not be verified', async () => {
+  it('sends a closer product framing on the retry when the label could not be verified', async () => {
     const job = product('p1');
     const runtime = runtimeOf([job]);
     runtime.get(job.id)!.labelReference = new File([new Uint8Array([9])], 'label.png', {
@@ -351,8 +351,9 @@ describe('catalog runner', () => {
 
     expect(recorder.generateCalls[0].imageName).toBe('p1.png');
     expect(recorder.generateCalls[1].imageName).toBe('label.png');
-    expect(job.attempts[1].referenceImage).toBe('label-close-up');
-    expect(job.attempts[1].prompt).toContain('close-up of the printed label');
+    expect(job.attempts[1].referenceImage).toBe('product-close-up');
+    expect(job.attempts[1].prompt).toContain('framed closer');
+    expect(job.attempts[1].prompt).toContain('Keep the entire package in frame');
     expect(job.status).toBe('approved');
   });
 

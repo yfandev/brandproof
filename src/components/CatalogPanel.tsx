@@ -40,7 +40,12 @@ import {
 import { runCatalog, type CatalogRuntimeProduct } from '../lib/catalogRunner';
 import { verifyGeneratedClip } from '../lib/catalogVerify';
 import { loadReferenceImage } from '../lib/image';
-import { labelCloseUpFile } from '../lib/labelCrop';
+import {
+  retryReferenceFile,
+  retryReferenceRegion,
+  subjectRegion,
+  textBlockRegion,
+} from '../lib/labelCrop';
 import { recognizeCanvas } from '../lib/ocr';
 import { groupLines } from '../lib/text';
 import { downloadText, reportToJson } from '../lib/report';
@@ -314,15 +319,19 @@ export function CatalogPanel() {
         ...config,
         maxAttempts: settings.retryLimit,
       };
-      // Every product with label text gets a close-up of its printed label, used
-      // only when an attempt fails to verify that text.
+      // Every product with label text gets a closer framing of the same package,
+      // used only when an attempt fails to verify that text.
       const labelReferences = new Map<string, File | null>();
       await Promise.all(
         rows.map(async (row) => {
           if (!row.canvas || !row.labelText.trim()) return;
           try {
             const scan = await recognizeCanvas(row.canvas, { autoRegion: true, thorough: false });
-            labelReferences.set(row.id, await labelCloseUpFile(row.canvas, scan.region, row.name));
+            const region = retryReferenceRegion({
+              text: textBlockRegion(scan.words),
+              subject: subjectRegion(row.canvas),
+            });
+            labelReferences.set(row.id, await retryReferenceFile(row.canvas, region, row.name));
           } catch {
             labelReferences.set(row.id, null);
           }

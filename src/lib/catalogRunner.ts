@@ -18,12 +18,15 @@ export interface CatalogRuntimeProduct {
   image: File;
   reference: { canvas: HTMLCanvasElement } | null;
   basePrompt: string;
-  /** Cropped, upscaled label used after an attempt could not verify the text. */
+  /**
+   * Closer framing of the same package, used after an attempt could not verify
+   * the printed text. It keeps the product on screen, unlike a label-only crop.
+   */
   labelReference?: File | null;
 }
 
 const CLOSE_UP_NOTE =
-  'The reference image is a close-up of the printed label. Keep that label filling the frame and reproduce every letter exactly as printed, with no added, duplicated or restyled lettering.';
+  'The reference image is the same product framed closer, cropped from the product photo. Keep the entire package in frame — cap, base and both sides visible — and never replace it with a flat label, a label graphic, a colour swatch or rows of repeated lettering. Reproduce the printed label exactly as printed, facing the camera, with no added, duplicated or restyled lettering.';
 
 export interface CatalogRunnerDeps {
   /** Server-side budget gate. Must be called before one generation attempt. */
@@ -204,8 +207,8 @@ export async function runCatalog(options: RunCatalogOptions): Promise<CatalogRun
     while (job.attempts.length < maxAttempts) {
       const attemptIndex = job.attempts.length + 1;
       const previous = job.attempts[job.attempts.length - 1] ?? null;
-      // Once the label could not be verified, send a close-up of the label so the
-      // model has enough pixels to render the printed line.
+      // Once the label could not be verified, send a closer framing of the whole
+      // package so the printed line gets enough pixels without losing the bottle.
       const useCloseUp = Boolean(product.labelReference) && labelNeedsCloseUp(previous?.evidence ?? null);
       const image = useCloseUp ? (product.labelReference as File) : product.image;
       const prompt = composeAttemptPrompt(product.basePrompt, pendingAdjustment) +
@@ -226,12 +229,12 @@ export async function runCatalog(options: RunCatalogOptions): Promise<CatalogRun
         error: null,
         videoName: null,
         reservationState: null,
-        referenceImage: useCloseUp ? 'label-close-up' : 'product',
+        referenceImage: useCloseUp ? 'product-close-up' : 'product',
       };
       job.attempts.push(attempt);
       job.status = 'generating';
       job.message = `Attempt ${attemptIndex} of ${maxAttempts} · generating clip${
-        useCloseUp ? ' from a label close-up' : ''
+        useCloseUp ? ' from a closer product framing' : ''
       }`;
       emit();
 
