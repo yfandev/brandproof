@@ -119,7 +119,7 @@ function runOf(products: CatalogProductJob[], concurrency = CONFIG.concurrency):
 }
 
 interface Recorder {
-  generateCalls: Array<{ productId: string; prompt: string }>;
+  generateCalls: Array<{ productId: string; prompt: string; imageName: string }>;
   settleCalls: Array<{ attemptId: string; outcome: 'used' | 'released' }>;
   reserveCalls: number;
   maxConcurrent: number;
@@ -155,11 +155,11 @@ function depsFor(
     async settle({ attemptId, outcome }) {
       recorder.settleCalls.push({ attemptId, outcome });
     },
-    async generate({ prompt, attemptId, onJobId }) {
+    async generate({ image, prompt, attemptId, onJobId }) {
       inFlight += 1;
       recorder.maxConcurrent = Math.max(recorder.maxConcurrent, inFlight);
       const job = { name: prompt.match(/base prompt for (.+)$/)?.[1] ?? 'unknown' };
-      recorder.generateCalls.push({ productId: job.name, prompt });
+      recorder.generateCalls.push({ productId: job.name, prompt, imageName: image.name });
       onJobId(`job-${attemptId}`);
       try {
         const attemptIndex = Number(prompt.match(/attempt (\d+)/i)?.[1] ?? 0);
@@ -335,6 +335,40 @@ describe('catalog runner', () => {
 
     expect(job.status).toBe('error');
     expect(recorder.generateCalls).toHaveLength(0);
+  });
+
+  it('sends a label close-up on the retry when the label could not be verified', async () => {
+    const job = product('p1');
+    const runtime = runtimeOf([job]);
+    runtime.get(job.id)!.labelReference = new File([new Uint8Array([9])], 'label.png', {
+      type: 'image/png',
+    });
+    const { deps, recorder } = depsFor({
+      verify: (_job, attempt) => (attempt === 1 ? report('REVIEW') : report('PASS')),
+    });
+
+    await runCatalog({ run: runOf([job]), runtime, deps });
+
+    expect(recorder.generateCalls[0].imageName).toBe('p1.png');
+    expect(recorder.generateCalls[1].imageName).toBe('label.png');
+    expect(job.attempts[1].referenceImage).toBe('label-close-up');
+    expect(job.attempts[1].prompt).toContain('close-up of the printed label');
+    expect(job.status).toBe('approved');
+  });
+
+  it('keeps the product photo when the label was verified', async () => {
+    const job = product('p1');
+    const runtime = runtimeOf([job]);
+    runtime.get(job.id)!.labelReference = new File([new Uint8Array([9])], 'label.png', {
+      type: 'image/png',
+    });
+    const { deps, recorder } = depsFor({ verify: () => report('PASS') });
+
+    await runCatalog({ run: runOf([job]), runtime, deps });
+
+    expect(recorder.generateCalls).toHaveLength(1);
+    expect(recorder.generateCalls[0].imageName).toBe('p1.png');
+    expect(job.attempts[0].referenceImage).toBe('product');
   });
 
   it('reports the strongest attempt when nothing reaches PASS', async () => {

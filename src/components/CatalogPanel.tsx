@@ -40,6 +40,7 @@ import {
 import { runCatalog, type CatalogRuntimeProduct } from '../lib/catalogRunner';
 import { verifyGeneratedClip } from '../lib/catalogVerify';
 import { loadReferenceImage } from '../lib/image';
+import { labelCloseUpFile } from '../lib/labelCrop';
 import { recognizeCanvas } from '../lib/ocr';
 import { groupLines } from '../lib/text';
 import { downloadText, reportToJson } from '../lib/report';
@@ -313,11 +314,27 @@ export function CatalogPanel() {
         ...config,
         maxAttempts: settings.retryLimit,
       };
+      // Every product with label text gets a close-up of its printed label, used
+      // only when an attempt fails to verify that text.
+      const labelReferences = new Map<string, File | null>();
+      await Promise.all(
+        rows.map(async (row) => {
+          if (!row.canvas || !row.labelText.trim()) return;
+          try {
+            const scan = await recognizeCanvas(row.canvas, { autoRegion: true, thorough: false });
+            labelReferences.set(row.id, await labelCloseUpFile(row.canvas, scan.region, row.name));
+          } catch {
+            labelReferences.set(row.id, null);
+          }
+        }),
+      );
+
       const runtime = new Map<string, CatalogRuntimeProduct>();
       const products: CatalogProductJob[] = rows.map((row) => {
         runtime.set(row.id, {
           image: row.file as File,
           reference: row.canvas ? { canvas: row.canvas } : null,
+          labelReference: labelReferences.get(row.id) ?? null,
           basePrompt: buildCatalogPrompt(
             {
               id: row.id,

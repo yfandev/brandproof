@@ -4,6 +4,7 @@ import {
   adjustmentFromEvidence,
   composeAttemptPrompt,
   isTerminal,
+  labelNeedsCloseUp,
   newCatalogId,
   pickBestAttempt,
   summariseReport,
@@ -17,7 +18,12 @@ export interface CatalogRuntimeProduct {
   image: File;
   reference: { canvas: HTMLCanvasElement } | null;
   basePrompt: string;
+  /** Cropped, upscaled label used after an attempt could not verify the text. */
+  labelReference?: File | null;
 }
+
+const CLOSE_UP_NOTE =
+  'The reference image is a close-up of the printed label. Keep that label filling the frame and reproduce every letter exactly as printed, with no added, duplicated or restyled lettering.';
 
 export interface CatalogRunnerDeps {
   /** Server-side budget gate. Must be called before one generation attempt. */
@@ -197,7 +203,13 @@ export async function runCatalog(options: RunCatalogOptions): Promise<CatalogRun
 
     while (job.attempts.length < maxAttempts) {
       const attemptIndex = job.attempts.length + 1;
-      const prompt = composeAttemptPrompt(product.basePrompt, pendingAdjustment);
+      const previous = job.attempts[job.attempts.length - 1] ?? null;
+      // Once the label could not be verified, send a close-up of the label so the
+      // model has enough pixels to render the printed line.
+      const useCloseUp = Boolean(product.labelReference) && labelNeedsCloseUp(previous?.evidence ?? null);
+      const image = useCloseUp ? (product.labelReference as File) : product.image;
+      const prompt = composeAttemptPrompt(product.basePrompt, pendingAdjustment) +
+        (useCloseUp ? `\n\n${CLOSE_UP_NOTE}` : '');
       const attempt: CatalogAttempt = {
         id: newCatalogId('att'),
         index: attemptIndex,
@@ -214,10 +226,13 @@ export async function runCatalog(options: RunCatalogOptions): Promise<CatalogRun
         error: null,
         videoName: null,
         reservationState: null,
+        referenceImage: useCloseUp ? 'label-close-up' : 'product',
       };
       job.attempts.push(attempt);
       job.status = 'generating';
-      job.message = `Attempt ${attemptIndex} of ${maxAttempts} · generating clip`;
+      job.message = `Attempt ${attemptIndex} of ${maxAttempts} · generating clip${
+        useCloseUp ? ' from a label close-up' : ''
+      }`;
       emit();
 
       let granted: { granted: boolean; reason: string | null; credits: number };
@@ -255,7 +270,7 @@ export async function runCatalog(options: RunCatalogOptions): Promise<CatalogRun
       let clip: { blob: Blob; filename: string; jobId: string | null };
       try {
         clip = await deps.generate({
-          image: product.image,
+          image,
           prompt,
           attemptId: attempt.id,
           onJobId: (jobId) => {
