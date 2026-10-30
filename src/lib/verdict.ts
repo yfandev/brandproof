@@ -373,6 +373,16 @@ export function buildReport(input: BuildReportInput): VerificationReport {
 
   const checks: CheckResult[] = [];
 
+  // The brand is judged the way the label is: a person looking at the clip asks
+  // whether the brand can be read, not whether it happened to be read perfectly
+  // in a fixed share of the sampled frames. Coverage stays a reported diagnostic.
+  const brandEvidence = aggregateTokens('brand', brandTokens, frames, readableCount, coverage);
+  const brandLegibleNeeded = legibleFrameThreshold(readableCount);
+  const brandLegibleHits =
+    brandEvidence.length > 0
+      ? Math.min(...brandEvidence.map((evidence) => evidence.strongHits))
+      : 0;
+
   let brandCheck: CheckResult;
   if (readableCount === 0) {
     brandCheck = {
@@ -383,6 +393,20 @@ export function buildReport(input: BuildReportInput): VerificationReport {
       detail:
         'No sampled frame produced readable text, so brand fidelity could not be assessed. Mark the label region manually or use a sharper, slower clip.',
       metric: `0 / ${frames.length} readable frames`,
+    };
+  } else if (
+    brandNearFrames >= Math.max(2, Math.ceil(readableCount * 0.5)) &&
+    brandRecall < 0.5
+  ) {
+    brandCheck = {
+      id: 'brand',
+      title: `Brand name “${config.brand}”`,
+      status: 'fail',
+      critical: true,
+      detail: `The brand appears altered in ${brandNearFrames} of ${readableCount} readable frames.${
+        closestBrandReadings.length > 0 ? ` Closest readings: ${closestBrandReadings.join(', ')}.` : ''
+      }`,
+      metric: `${brandNearFrames} altered / ${readableCount} readable frames`,
     };
   } else if (brandRecall >= coverage) {
     brandCheck = {
@@ -428,16 +452,18 @@ export function buildReport(input: BuildReportInput): VerificationReport {
       }`,
       metric: `${brandHits} / ${readableCount} readable frames`,
     };
-  } else if (brandNearFrames >= Math.max(2, Math.ceil(readableCount * 0.5)) && brandRecall < 0.5) {
+  } else if (brandLegibleHits >= brandLegibleNeeded && brandNearFrames < 2) {
     brandCheck = {
       id: 'brand',
       title: `Brand name “${config.brand}”`,
-      status: 'fail',
+      status: 'pass',
       critical: true,
-      detail: `The brand appears altered in ${brandNearFrames} of ${readableCount} readable frames.${
-        closestBrandReadings.length > 0 ? ` Closest readings: ${closestBrandReadings.join(', ')}.` : ''
+      detail: `The brand was read correctly at confidence ${LEGIBLE_LABEL_CONFIDENCE} or better in ${brandLegibleHits} of ${readableCount} readable frames. Full-frame coverage was ${formatPercent(brandRecall)}, below the ${formatPercent(coverage)} target, and is reported as a diagnostic: the question here is whether a person can read the brand, and it was read clearly.${
+        brandNearFrames === 1
+          ? ' One near-match reading was treated as a single OCR miss, not a changed label.'
+          : ''
       }`,
-      metric: `${brandNearFrames} altered / ${readableCount} readable frames`,
+      metric: `${brandLegibleHits} / ${readableCount} frames read clearly`,
     };
   } else {
     brandCheck = {
@@ -445,7 +471,9 @@ export function buildReport(input: BuildReportInput): VerificationReport {
       title: `Brand name “${config.brand}”`,
       status: 'review',
       critical: true,
-      detail: `Recognised in ${brandHits} of ${readableCount} readable frames (${formatPercent(brandRecall)}), below the ${formatPercent(coverage)} coverage target. More readable frames are needed to judge fidelity.`,
+      detail: `The brand was read correctly in ${brandHits} of ${readableCount} readable frames, but not clearly enough to judge fidelity: it needs a correct read at confidence ${LEGIBLE_LABEL_CONFIDENCE} or better in at least ${brandLegibleNeeded} readable frames, with fewer than 2 near-match readings. Full-frame coverage was ${formatPercent(brandRecall)} against a ${formatPercent(coverage)} target.${
+        closestBrandReadings.length > 0 ? ` Closest readings: ${closestBrandReadings.join(', ')}.` : ''
+      }`,
       metric: `${brandHits} / ${readableCount} readable frames`,
     };
   }
@@ -681,7 +709,11 @@ export function buildReport(input: BuildReportInput): VerificationReport {
   } else if (criticalPass && enoughEvidence && labelBlocksPass) {
     verdict = 'PASS';
     headline = 'Brand integrity holds';
-    summary = `The brand was recognised in ${brandHits} of ${readableCount} readable frames${labelTokens.length > 0 ? `, and every configured label token was read clearly at confidence ${LEGIBLE_LABEL_CONFIDENCE} or better in at least ${legibleFrameThreshold(readableCount)} frames` : ''}. The brand meets the ${formatPercent(coverage)} coverage target and the label met the legibility rule a person would apply. This is an automated OCR consistency check, not proof of pixel-level identity.`;
+    const labelSummary =
+      labelTokens.length > 0
+        ? `, and every configured label token was read clearly at confidence ${LEGIBLE_LABEL_CONFIDENCE} or better in at least ${legibleFrameThreshold(readableCount)} frames`
+        : '';
+    summary = `The brand was read correctly in ${brandHits} of ${readableCount} readable frames${labelSummary}. Fidelity is judged on legibility, the way a person reads a label; per-frame coverage (${formatPercent(coverage)} target) is reported as a diagnostic. This is an automated OCR consistency check, not proof of pixel-level identity.`;
   } else {
     verdict = 'REVIEW';
     headline = 'Needs a human check';
@@ -729,7 +761,7 @@ export function buildReport(input: BuildReportInput): VerificationReport {
     checks,
     metrics,
     tokenEvidence: [
-      ...aggregateTokens('brand', brandTokens, frames, readableCount, coverage),
+      ...brandEvidence,
       ...aggregateTokens('label', labelTokens, frames, readableCount, coverage),
     ],
     frames,

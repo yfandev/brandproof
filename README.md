@@ -183,7 +183,7 @@ Everything after the clip exists is local.
 
 `sampleTimes()` picks evenly spaced timestamps from 4% to 96% of the clip duration (6, 12 or 18 frames; 12 by default), so early, middle and late portions are all represented. Each frame is seeked, drawn to its own canvas at up to **1920 px** wide, and stored as a JPEG thumbnail. Frame canvases are what OCR reads; the JPEGs are only for display.
 
-More frames reduce the chance that a bad splice or brief distortion sits between samples, but they do not turn one good frame into proof for the whole clip. Each sampled frame is reported separately and the verdict uses the readable-frame coverage rule below.
+More frames reduce the chance that a bad splice or brief distortion sits between samples, but they do not turn one good frame into proof for the whole clip. Each sampled frame is reported separately and the verdict applies the readability rules below.
 
 If the browser cannot decode or seek the clip, verification stops with a concrete error instead of producing an empty report. MOV/HEVC clips usually fail here — re-encode to MP4/H.264 or WebM.
 
@@ -221,11 +221,11 @@ A token is `match` at/above threshold, `near` at ≥ 72% of threshold (minimum 5
 
 ### 4. Verdict rules
 
-Let **readable** = frames with legible OCR text. `coverage` is user-set (default 60%). Required evidence is `max(2, ceil(0.4 × sampled))` readable frames and a passing legibility check (≥ 70% readable, mean confidence ≥ 55).
+Let **readable** = frames with legible OCR text. `coverage` is user-set (default 60%) and is reported with the checks as a diagnostic; it does not gate a token that was clearly read. Required evidence is `max(2, ceil(0.4 × sampled))` readable frames and a passing legibility check (≥ 70% readable, mean confidence ≥ 55).
 
 **PASS** requires all of:
 
-- brand matched in ≥ coverage of readable frames — or, when the word is present but its leading edge is clipped, full reads in ≥ 3 frames plus full-or-partial reads in ≥ coverage of readable frames, with no altered spelling anywhere;
+- the brand was **read clearly** — matched at word confidence ≥ 80 in at least 2 readable frames (1 when only a single frame is readable), with fewer than 2 near-match readings — or matched in ≥ coverage of readable frames, or, when the word is present but its leading edge is clipped, full reads in ≥ 3 frames plus full-or-partial reads in ≥ coverage of readable frames, with no altered spelling anywhere;
 - every configured label token was **read clearly** — matched, at word confidence ≥ 80, in at least 2 readable frames (1 when only a single frame is readable); the label is skipped when no label text is configured. Full-label coverage is still computed and shown, but as a diagnostic: it does not gate the label;
 - readable frames ≥ required;
 - legibility check passes;
@@ -239,9 +239,9 @@ Let **readable** = frames with legible OCR text. `coverage` is user-set (default
 
 A label line that is simply absent from otherwise readable text is **NOT DETECTED**, not a confirmed mismatch. It produces REVIEW with an explanation that the label may be too small or blurred for OCR, and that the user should mark the label area or use a sharper clip. Likewise, frames where OCR cannot read the label are **UNREADABLE**, not failures.
 
-**REVIEW** is everything else: insufficient readable frames, brand coverage below target, low OCR confidence, a single near reading, a label token that could not be read at confidence ≥ 80 in 2 readable frames, or all expected label lines undetected.
+**REVIEW** is everything else: insufficient readable frames, a brand that was read correctly but never clearly enough (confidence ≥ 80 in 2 readable frames), two or more near-match readings without a majority of clean reads, low OCR confidence, a single near reading, a label token that could not be read at confidence ≥ 80 in 2 readable frames, or all expected label lines undetected.
 
-**The label is judged the way a person judges it.** Per-frame coverage asks "did every label token happen to be perfect in a fixed share of frames?", which a clip fails whenever the camera dwells on the label for a second and then moves on — even though the label was plainly readable. Label verification therefore uses a legibility rule: each configured token must be read correctly at word confidence ≥ 80 in **2 readable frames** (or in the single readable frame, when there is only one). Coverage across all readable frames (`labelRecall`) is still reported in the metrics, the per-token evidence and the label check's text, so a thin read is visible — it just no longer decides the verdict on its own. A label still fails when a token is repeatedly read as a near miss in ≥ 2 frames, and still stops at REVIEW when a token was never read clearly enough; a low score is never promoted to PASS.
+**The label is judged the way a person judges it, and so is the brand.** Per-frame coverage asks "did the text happen to be perfect in a fixed share of frames?", which a clip fails whenever the camera dwells on the label for a second and then moves on — even though the label was plainly readable. Verification therefore uses a legibility rule: each configured token must be read correctly at word confidence ≥ 80 in **2 readable frames** (or in the single readable frame, when there is only one), with fewer than 2 near-match readings. Coverage across all readable frames (`labelRecall`, and `brandRecall` for the brand) is still reported in the metrics, the per-token evidence and the check's text, so a thin read is visible — it just no longer decides the verdict on its own. A real run showed why: a clip printed `MERIDIAN` clearly in 6 of 11 readable frames, one frame read `MERIDIAR`, and coverage came out at 55% against a 60% target, which produced REVIEW for a brand a person could plainly read. A token still fails when it is repeatedly read as a near miss in ≥ 2 frames, and still stops at REVIEW when it was never read clearly enough; a low score is never promoted to PASS.
 
 **Duplicated lettering fails.** Every unmatched word is compared with the required tokens. A word that is at least 80% similar to a required word, is not a fragment or contraction of it, and appears in the same frame as the correct word, counts as a near-copy — for example `BOTANKA` printed above a correct `BOTANIKA`. Two or more readable frames with such a near-copy fail the critical **No duplicated lettering** check, because the render invented a second, garbled copy of text that should appear once. A single frame produces REVIEW, never FAIL. The offending reading, its similarity, confidence and box are recorded on that frame and in the JSON report.
 
@@ -440,7 +440,7 @@ Use it as the product reference, enter `BOTANIKA` as the brand, and the three la
 - Add a label line that is definitely not printed, keep "Treat missing label text as critical" on, and re-run: expect **REVIEW** with `NOT DETECTED` token evidence, not an invented FAIL. A missing line is not proof that the label changed.
 - Change one letter in a label line that was previously read clearly, then re-run: if OCR repeatedly reads the altered near-miss, the label check should FAIL as `VISIBLY DISTORTED`.
 - Import a clip with no visible text: expect REVIEW with a failing legibility check, not a fake PASS.
-- Lower the sample count to 6 and raise coverage to 90% to see coverage-driven REVIEW.
+- Lower the sample count to 6 and use a soft-focus or fast-moving clip to see REVIEW when a token is never read clearly enough.
 
 ### Automated checks
 
