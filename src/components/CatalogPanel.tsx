@@ -585,9 +585,10 @@ export function CatalogPanel() {
           </p>
           <p className="cat__lede">
             The goal is a clip that is <em>proven</em>, not a verdict to hand off. A <strong>FAIL</strong> or{' '}
-            <strong>REVIEW</strong> sends the product straight back through generation with its prompt rewritten from
-            that attempt&apos;s own OCR evidence, so BrandProof keeps working until the label is actually verified — up to{' '}
-            {settings?.retryLimit ?? MAX_ATTEMPTS_PER_PRODUCT} attempts. REVIEW never counts as approval.
+            <strong>REVIEW</strong> sends the product back through generation with its prompt rewritten from that
+            attempt&apos;s own OCR evidence — up to {settings?.retryLimit ?? MAX_ATTEMPTS_PER_PRODUCT} attempts. If no
+            attempt proves the label, the product ends as <strong>Needs human review</strong> with its strongest attempt
+            shown as best evidence: retries aim for proof, and REVIEW never counts as approval.
           </p>
           <details className="cat-notes">
             <summary>How the automatic retry loop works</summary>
