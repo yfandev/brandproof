@@ -47,6 +47,7 @@ import {
 } from '../lib/catalogRunner';
 import { verifyGeneratedClip } from '../lib/catalogVerify';
 import { loadReferenceImage } from '../lib/image';
+import { frameProductPhoto } from '../lib/productFrame';
 import { labelFeasibility, medianLineHeightPx } from '../lib/labelFeasibility';
 import { recognizeCanvas } from '../lib/ocr';
 import { groupLines } from '../lib/text';
@@ -254,6 +255,38 @@ export function CatalogPanel() {
         ...previous,
         [row.id]: { status: 'error', error: readError(error) },
       }));
+    }
+  };
+
+  /**
+   * Crops the uploaded photo to the product and re-measures it. Prompts cannot
+   * add resolution, so this is the only honest way to give the printed label
+   * more pixels before spending credits on a generation.
+   */
+  const frameProduct = async (row: Row) => {
+    if (!row.canvas || !row.file) return;
+    try {
+      const result = frameProductPhoto(row.canvas);
+      if (!result.framed) {
+        updateRow(row.id, {
+          error:
+            'The product could not be separated from its backdrop, so the photo was left as it is. A plain, evenly lit background works best.',
+        });
+        return;
+      }
+      const blob = await new Promise<Blob | null>((resolve) => {
+        result.canvas.toBlob((value) => resolve(value), 'image/png');
+      });
+      if (!blob) throw new Error('The cropped photo could not be encoded.');
+      const safe = (row.name || 'product').trim().replace(/[^A-Za-z0-9._-]+/g, '-') || 'product';
+      const file = new File([blob], `${safe}-framed.png`, { type: 'image/png' });
+      const previewUrl = URL.createObjectURL(file);
+      if (row.previewUrl) URL.revokeObjectURL(row.previewUrl);
+      const framedRow: Row = { ...row, file, previewUrl, canvas: result.canvas, error: null };
+      setRows((previous) => previous.map((entry) => (entry.id === row.id ? framedRow : entry)));
+      await scanRow(framedRow);
+    } catch (error) {
+      updateRow(row.id, { error: readError(error) });
     }
   };
 
@@ -785,6 +818,15 @@ export function CatalogPanel() {
                       onClick={() => void scanRow(row)}
                     >
                       {scans[row.id]?.status === 'running' ? 'Scanning…' : 'Scan photo'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={busy || !row.canvas}
+                      onClick={() => void frameProduct(row)}
+                      title="Crop the photo to the product so the printed label gets more pixels"
+                    >
+                      Frame product
                     </button>
                   </div>
 
